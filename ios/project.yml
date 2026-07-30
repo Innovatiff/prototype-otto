@@ -48,6 +48,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Otto listens so you can talk to it."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Otto transcribes your speech on this device to understand you."
 
         # Simulator needs no signing team; set DEVELOPMENT_TEAM here once the
         # Apple Developer Program membership lands.
