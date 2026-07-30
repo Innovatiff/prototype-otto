@@ -5,10 +5,14 @@ import Foundation
 ///
 /// Isolated to AudioActor (the shared audio domain from Step 1): conformers
 /// hold non-Sendable AVFoundation objects, and VoiceLoop — its own actor —
-/// awaits these members. The member set matches the Phase 1 spec exactly;
-/// ElevenLabsSpeaker arrives as a second conformer at the end of the phase.
+/// awaits these members. `Sendable` makes the existential (`any Speaker`)
+/// legal to send across that actor boundary; every conformer is an
+/// AudioActor-isolated class, which is implicitly Sendable, so the
+/// refinement costs conformers nothing. The member set matches the Phase 1
+/// spec exactly; ElevenLabsSpeaker arrives as a second conformer at the end
+/// of the phase.
 @AudioActor
-protocol Speaker {
+protocol Speaker: Sendable {
     /// Speaks an async stream of text (speakable units from the ClauseBuffer),
     /// beginning with the first unit without waiting for the stream to finish.
     func speak(_ stream: AsyncStream<String>) async throws
@@ -20,9 +24,10 @@ protocol Speaker {
 }
 
 /// Timing surface for the Step 6 latency ledger, separate so the Speaker
-/// protocol stays exactly as specified.
+/// protocol stays exactly as specified. Sendable for the same existential-
+/// crossing reason as Speaker above.
 @AudioActor
-protocol SpeakerInstrumentation {
+protocol SpeakerInstrumentation: Sendable {
     /// When the current/most recent session scheduled its first audio.
     var lastFirstAudioAt: Date? { get }
 }
