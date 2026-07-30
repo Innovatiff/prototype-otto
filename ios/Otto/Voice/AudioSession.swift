@@ -147,11 +147,17 @@ final class AudioSessionController {
         engine.inputNode.outputFormat(forBus: 0)
     }
 
-    /// (Re)connects the playback node with an explicit source format. The
-    /// speaker calls this so the mixer converts from the synthesizer's native
-    /// format; a nil format reverts to the mixer's own.
+    /// The playback node's current source format; nil means the mixer's own.
+    private var playbackFormat: AVAudioFormat?
+
+    /// (Re)connects the playback node for an explicit source format — the
+    /// speaker and clip cache both call this per buffer, and the mixer
+    /// converts to the hardware rate. Deduped: reconnecting with the format
+    /// already in place is a no-op.
     func connectPlayback(format: AVAudioFormat?) {
+        guard format != playbackFormat else { return }
         engine.connect(playbackNode, to: engine.mainMixerNode, format: format)
+        playbackFormat = format
     }
 
     // MARK: - Graph
@@ -176,8 +182,10 @@ final class AudioSessionController {
             playbackAttached = true
         }
         // nil format: let the engine negotiate against the (possibly VP-altered)
-        // mixer format at connect time.
+        // mixer format at connect time. Reset the tracker so the next
+        // connectPlayback(format:) call reconnects for its source format.
         engine.connect(playbackNode, to: engine.mainMixerNode, format: nil)
+        playbackFormat = nil
 
         // Touching inputNode materializes the mic path within the session's
         // category; a tap is installed later by the transcriber.

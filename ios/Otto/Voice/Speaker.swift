@@ -28,10 +28,11 @@ protocol SpeakerInstrumentation {
 }
 
 /// A synthesized buffer crossing from the synthesizer's delivery queue into
-/// the AudioActor domain. `@unchecked Sendable` is justified narrowly: each
-/// buffer is freshly created by the synthesizer, handed to exactly one
-/// consumer, and never touched after scheduling.
-private struct SynthesizedBuffer: @unchecked Sendable {
+/// the AudioActor domain (used by SystemSpeaker and ClipCache rendering).
+/// `@unchecked Sendable` is justified narrowly: each buffer is freshly
+/// created by the synthesizer, handed to exactly one consumer, and never
+/// touched after scheduling.
+struct SynthesizedBuffer: @unchecked Sendable {
     let buffer: AVAudioBuffer
 }
 
@@ -58,6 +59,9 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
     private(set) var isSpeaking = false
     private(set) var lastFirstAudioAt: Date?
 
+    /// Set by VoiceLoop once the cache exists; speak(clip:) prefers it.
+    var clipCache: ClipCache?
+
     /// Incremented on every session start, stop, and engine restart; buffer
     /// and completion callbacks carry the generation they belong to and are
     /// ignored once it is stale.
@@ -65,7 +69,6 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
     private var outstandingBuffers = 0
     private var stopping = false
     private var playerStarted = false
-    private var connectedFormat: AVAudioFormat?
 
     private var utteranceContinuation: CheckedContinuation<Void, Never>?
     private var drainContinuation: CheckedContinuation<Void, Never>?
@@ -92,12 +95,42 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
     }
 
     func speak(clip: CachedClip) async {
-        // TODO(Step 5): check ClipCache first — pre-rendered .caf playback in
-        // under 20ms. Until then, synthesize the phrase live.
+        // Cache first — pre-rendered playback with nothing to synthesize.
+        if let cached = clipCache?.buffer(for: clip) {
+            await playCachedBuffer(cached)
+            return
+        }
+        // Fallback: live synthesis through the streaming path. Silence is the
+        // worst possible failure; a slow clip beats no clip.
         let (stream, continuation) = AsyncStream.makeStream(of: String.self)
         continuation.yield(clip.rawValue)
         continuation.finish()
         await speak(stream)
+    }
+
+    /// A cached clip through the normal session machinery, so isSpeaking,
+    /// stopImmediately's fade, and the drain bookkeeping all behave exactly
+    /// as they do for streamed speech.
+    private func playCachedBuffer(_ buffer: AVAudioPCMBuffer) async {
+        let session = beginSession()
+        ensurePlaybackConnected(format: buffer.format)
+        outstandingBuffers += 1
+        if lastFirstAudioAt == nil {
+            lastFirstAudioAt = Date()
+        }
+        audioSession.playbackNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { @Sendable _ in
+            Task { @AudioActor in
+                self.bufferPlayed(session: session)
+            }
+        }
+        if !playerStarted {
+            audioSession.playbackNode.play()
+            playerStarted = true
+        }
+        await waitForDrain(session: session)
+        if session == generation {
+            isSpeaking = false
+        }
     }
 
     func stopImmediately() async {
@@ -203,13 +236,10 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
         }
     }
 
-    /// Connect the playback node for the synthesizer's native format; the
-    /// mixer converts to the hardware rate. Reconnection happens on the first
-    /// buffer of a session (before playback starts) or on a voice change.
+    /// Connect the playback node for the source buffer's format; the session
+    /// controller dedupes, so this is a cheap per-buffer call.
     private func ensurePlaybackConnected(format: AVAudioFormat) {
-        guard connectedFormat != format else { return }
         audioSession.connectPlayback(format: format)
-        connectedFormat = format
     }
 
     // MARK: - Engine restarts
@@ -228,7 +258,6 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
     }
 
     private func handleEngineRestart() {
-        connectedFormat = nil
         playerStarted = false
         guard isSpeaking else { return }
         generation += 1
