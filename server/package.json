@@ -16,6 +16,7 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@google-cloud/secret-manager": "^6.3.0",
     "@otto/shared": "*",
     "express": "^5.2.1",

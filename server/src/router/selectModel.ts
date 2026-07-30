@@ -1,9 +1,11 @@
 /**
  * Tier selection: which brain answers a turn.
  *
- * local and pcc never touch the Anthropic API — they run on-device or on
- * Apple Private Cloud Compute. sonnet/opus are server-side model calls
- * (stubbed in Phase 0).
+ * local and pcc are destined for on-device / Apple Private Cloud Compute and
+ * carry no model string. sonnet/opus are real server-side Anthropic calls as
+ * of Phase 1. Until the on-device paths exist, /converse answers null-model
+ * tiers with sonnet — that fallback lives in the route, not here, so the
+ * routing decision itself stays honest.
  */
 import { logInfo } from "../log.js";
 
@@ -41,12 +43,12 @@ const DRAFTING_INTENTS: ReadonlySet<string> = new Set(["message_draft"]);
  * The single place tiers map to model strings. local and pcc are on-device /
  * Apple Private Cloud Compute — there is no model string to call.
  */
-export const TIER_MODELS: Readonly<Record<Tier, string | null>> = {
+export const TIER_MODELS = {
   local: null,
   pcc: null,
   sonnet: "claude-sonnet-5",
   opus: "claude-opus-5",
-};
+} as const satisfies Readonly<Record<Tier, string | null>>;
 
 export function selectTier(i: RouteInput): Tier {
   // Multi-step work (plan generation) is the only thing that justifies opus,
