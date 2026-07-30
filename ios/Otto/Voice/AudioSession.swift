@@ -147,6 +147,13 @@ final class AudioSessionController {
         engine.inputNode.outputFormat(forBus: 0)
     }
 
+    /// (Re)connects the playback node with an explicit source format. The
+    /// speaker calls this so the mixer converts from the synthesizer's native
+    /// format; a nil format reverts to the mixer's own.
+    func connectPlayback(format: AVAudioFormat?) {
+        engine.connect(playbackNode, to: engine.mainMixerNode, format: format)
+    }
+
     // MARK: - Graph
 
     private func buildGraphAndStart() throws {
