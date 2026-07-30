@@ -17,6 +17,18 @@ packages:
     url: https://github.com/firebase/firebase-ios-sdk.git
     from: 12.0.0
 
+schemes:
+  Otto:
+    build:
+      targets:
+        Otto: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - OttoTests
+
 targets:
   Otto:
     type: application
@@ -56,3 +68,19 @@ targets:
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_EMIT_LOC_STRINGS: NO
+
+  OttoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      # ClauseBufferVectors.json rides along as a test-bundle resource.
+      - path: OttoTests
+    dependencies:
+      # XcodeGen wires TEST_HOST/BUNDLE_LOADER from this app dependency.
+      - target: Otto
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourname.otto.tests
+        SWIFT_VERSION: "6.0"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+        GENERATE_INFOPLIST_FILE: YES

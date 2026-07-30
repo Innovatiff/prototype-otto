@@ -1,0 +1,114 @@
+{
+  "cases": [
+    {
+      "name": "simple sentence",
+      "tokens": ["Hello ", "world."],
+      "expected": ["Hello world."]
+    },
+    {
+      "name": "two sentences in one burst",
+      "tokens": ["Hi. How are you?"],
+      "expected": ["Hi.", "How are you?"]
+    },
+    {
+      "name": "clause of five-plus words splits at the comma",
+      "tokens": ["When ", "you ", "get ", "to ", "the ", "store, ", "buy ", "milk."],
+      "expected": ["When you get to the store,", "buy milk."]
+    },
+    {
+      "name": "short clause does not split",
+      "tokens": ["Yes, ", "absolutely ", "fine."],
+      "expected": ["Yes, absolutely fine."]
+    },
+    {
+      "name": "decimal survives",
+      "tokens": ["Pi ", "is ", "3.14 ", "exactly."],
+      "expected": ["Pi is 3.14 exactly."]
+    },
+    {
+      "name": "decimal split across tokens survives",
+      "tokens": ["Pi is 3", ".", "14. Nice."],
+      "expected": ["Pi is 3.14.", "Nice."]
+    },
+    {
+      "name": "abbreviation Dr. does not split",
+      "tokens": ["Ask ", "Dr. ", "Smith ", "tomorrow."],
+      "expected": ["Ask Dr. Smith tomorrow."]
+    },
+    {
+      "name": "a.m. does not split",
+      "tokens": ["Wake ", "me ", "at ", "7 ", "a.m. ", "please."],
+      "expected": ["Wake me at 7 a.m. please."]
+    },
+    {
+      "name": "ellipsis does not split",
+      "tokens": ["Well... ", "maybe ", "later."],
+      "expected": ["Well... maybe later."]
+    },
+    {
+      "name": "overflow at twelve words with no punctuation",
+      "tokens": ["one ", "two ", "three ", "four ", "five ", "six ", "seven ", "eight ", "nine ", "ten ", "eleven ", "twelve ", "thirteen"],
+      "expected": ["one two three four five six seven eight nine ten eleven twelve", "thirteen"]
+    },
+    {
+      "name": "exclamation and question marks end sentences",
+      "tokens": ["Stop! ", "Now?"],
+      "expected": ["Stop!", "Now?"]
+    },
+    {
+      "name": "thousands separator survives, later comma splits",
+      "tokens": ["It ", "costs ", "1,000 ", "dollars ", "today, ", "roughly ", "speaking."],
+      "expected": ["It costs 1,000 dollars today,", "roughly speaking."]
+    },
+    {
+      "name": "clock time colon survives",
+      "tokens": ["Meet ", "at ", "3:30 ", "today, ", "then ", "we ", "leave."],
+      "expected": ["Meet at 3:30 today, then we leave."]
+    },
+    {
+      "name": "colon after five words splits",
+      "tokens": ["Here ", "is ", "the ", "plan ", "today: ", "first ", "we ", "run."],
+      "expected": ["Here is the plan today:", "first we run."]
+    },
+    {
+      "name": "period inside closing quote splits after the quote",
+      "tokens": ["He said \"stop.\" ", "Then left."],
+      "expected": ["He said \"stop.\"", "Then left."]
+    },
+    {
+      "name": "flush without punctuation",
+      "tokens": ["just ", "this"],
+      "expected": ["just this"]
+    },
+    {
+      "name": "whitespace only yields nothing",
+      "tokens": ["   ", " "],
+      "expected": []
+    },
+    {
+      "name": "token split mid-word",
+      "tokens": ["unbe", "lievable. Yes."],
+      "expected": ["unbelievable.", "Yes."]
+    },
+    {
+      "name": "single-letter initials survive",
+      "tokens": ["J. ", "K. ", "Rowling ", "wrote ", "it."],
+      "expected": ["J. K. Rowling wrote it."]
+    },
+    {
+      "name": "semicolon after five words splits",
+      "tokens": ["First ", "we ", "eat ", "dinner ", "here; ", "then ", "we ", "go."],
+      "expected": ["First we eat dinner here;", "then we go."]
+    },
+    {
+      "name": "question-exclamation run stays together",
+      "tokens": ["Seriously?! ", "Wow."],
+      "expected": ["Seriously?!", "Wow."]
+    },
+    {
+      "name": "trailing digit-period holds until stream finishes",
+      "tokens": ["The answer is 42."],
+      "expected": ["The answer is 42."]
+    }
+  ]
+}
