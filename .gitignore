@@ -1,0 +1,26 @@
+# ── Secrets & credentials — NEVER commit ────────────────────────────
+*.p8
+service-account*.json
+.env
+.env.*
+!.env.example
+GoogleService-Info.plist
+secrets/
+
+# ── OS ──────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── Node ────────────────────────────────────────────────────────────
+node_modules/
+*.log
+npm-debug.log*
+
+# ── Build output ────────────────────────────────────────────────────
+build/
+dist/
+
+# ── Xcode ───────────────────────────────────────────────────────────
+*.xcuserstate
+xcuserdata/
+DerivedData/
+.build/

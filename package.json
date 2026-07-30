@@ -1,0 +1,19 @@
+{
+  "name": "otto",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Otto — a voice-first personal assistant (workspace root)",
+  "workspaces": [
+    "shared"
+  ],
+  "scripts": {
+    "codegen": "tsx shared/codegen/swift.ts",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

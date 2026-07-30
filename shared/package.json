@@ -1,0 +1,22 @@
+{
+  "name": "@otto/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zod schemas — the single source of truth for Otto",
+  "main": "./dist/schemas/index.js",
+  "types": "./dist/schemas/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/schemas/index.d.ts",
+      "default": "./dist/schemas/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  }
+}
