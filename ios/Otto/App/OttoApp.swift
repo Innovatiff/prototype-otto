@@ -9,19 +9,23 @@ import FirebaseCore
 /// ios/Otto/GoogleService-Info.plist (it is gitignored, never committed).
 @main
 struct OttoApp: App {
-    @State private var model: DebugModel
+    @State private var conversation: ConversationModel
+    @State private var settings: DebugModel
 
     init() {
         FirebaseApp.configure()
         // EmailPasswordAuth is the Phase 0 AuthProvider. Sign in with Apple
         // becomes a second implementation of the same protocol later — this
-        // line is the only one that changes.
-        _model = State(initialValue: DebugModel(auth: EmailPasswordAuth()))
+        // line is the only one that changes. One instance feeds both models
+        // so sign-in state is shared.
+        let auth = EmailPasswordAuth()
+        _settings = State(initialValue: DebugModel(auth: auth))
+        _conversation = State(initialValue: ConversationModel(auth: auth))
     }
 
     var body: some Scene {
         WindowGroup {
-            DebugView(model: model)
+            ConversationView(model: conversation, settings: settings)
         }
     }
 }

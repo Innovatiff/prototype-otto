@@ -23,7 +23,8 @@ final class DebugModel {
     var statusLine = ""
     var isStreaming = false
 
-    private static let serverURLKey = "otto.debug.serverURL"
+    /// Shared with ConversationModel so both screens read one server URL.
+    static let serverURLKey = "otto.debug.serverURL"
     private let auth: any AuthProvider
 
     init(auth: any AuthProvider) {
