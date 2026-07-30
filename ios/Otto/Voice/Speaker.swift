@@ -67,6 +67,10 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
     /// Injected at init; speak(clip:) prefers it over live synthesis.
     private let clipCache: ClipCache?
 
+    /// Best installed system voice, resolved once per launch. ClipCache
+    /// resolves the same way, so cached and live audio share one voice.
+    private let voice = OttoVoice.best()
+
     /// Incremented on every session start, stop, and engine restart; buffer
     /// and completion callbacks carry the generation they belong to and are
     /// ignored once it is stale.
@@ -186,6 +190,7 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
     /// usually continues well past this point).
     private func synthesize(_ text: String, session: Int) async {
         let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = voice
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             utteranceContinuation = continuation
             synthesizer.write(utterance) { @Sendable rawBuffer in

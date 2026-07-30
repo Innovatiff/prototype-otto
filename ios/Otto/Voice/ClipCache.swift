@@ -39,7 +39,7 @@ final class ClipCache {
     }
 
     /// Bump when rendering parameters change (rate, voice selection logic…).
-    private static let cacheVersion = 1
+    private static let cacheVersion = 2
 
     private let audioSession: AudioSessionController
     private let synthesizer = AVSpeechSynthesizer()
@@ -150,6 +150,7 @@ final class ClipCache {
 
         let (stream, continuation) = AsyncStream.makeStream(of: SynthesizedBuffer.self)
         let utterance = AVSpeechUtterance(string: clip.rawValue)
+        utterance.voice = OttoVoice.best()
         synthesizer.write(utterance) { @Sendable rawBuffer in
             // A zero-frame buffer is the end-of-utterance marker.
             if let pcm = rawBuffer as? AVAudioPCMBuffer, pcm.frameLength == 0 {
@@ -191,7 +192,7 @@ final class ClipCache {
     }
 
     private static func currentManifest() -> Manifest {
-        let voice = AVSpeechSynthesisVoice(language: nil)?.identifier ?? "system-default"
+        let voice = OttoVoice.best()?.identifier ?? "system-default"
         var phrases: [String: String] = [:]
         for clip in CachedClip.allCases {
             phrases[String(describing: clip)] = clip.rawValue

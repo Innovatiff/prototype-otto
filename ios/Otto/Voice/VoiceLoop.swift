@@ -108,8 +108,11 @@ final class MicLevelMonitor {
         let inputNode = audioSession.engine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
         guard format.sampleRate > 0 else { return }
-        let durationMs = 1024.0 / format.sampleRate * 1000
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable buffer, _ in
+            // The engine treats the requested size as advisory and often
+            // delivers far bigger buffers; measure what actually arrived or
+            // the barge sustain accumulates several times too slowly.
+            let durationMs = Double(buffer.frameLength) / buffer.format.sampleRate * 1000
             continuation.yield(Sample(db: Transcriber.rmsDb(of: buffer), durationMs: durationMs))
         }
         installed = true
