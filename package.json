@@ -14,9 +14,14 @@
     "typecheck": "npm run build -w @otto/shared && npm run typecheck -w @otto/shared && npm run typecheck -w @otto/server",
     "test": "npm run build -w @otto/shared && npm run test -w @otto/shared && npm run test -w @otto/server",
     "dev": "npm run build -w @otto/shared && npm run dev -w @otto/server",
-    "deploy": "bash server/deploy.sh"
+    "test:rules": "firebase emulators:exec --only firestore --project demo-otto \"node --test firestore.rules.test.mjs\"",
+    "deploy": "bash server/deploy.sh",
+    "deploy:firestore": "firebase deploy --only firestore"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.16.0",
+    "firebase-tools": "^15.25.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

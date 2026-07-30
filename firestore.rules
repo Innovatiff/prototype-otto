@@ -1,0 +1,67 @@
+rules_version = '2';
+
+// Otto Firestore rules.
+//
+// Contract:
+//   - A user can read and write only documents whose ownerId is their uid.
+//   - cost_events and cost_daily are server-only: no client access at all.
+//     (The Admin SDK on Cloud Run bypasses rules; nothing else gets in.)
+//   - Everything else is denied by default.
+//
+// Rules enforce OWNERSHIP; document shape is enforced by the API layer, which
+// validates every write against the Zod schemas in shared/schemas/. Phase 0
+// clients talk only to the API, but these rules hold even if a client ever
+// touches Firestore directly.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // The existing document belongs to the caller.
+    function ownsExisting() {
+      return signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // The incoming document (create/update payload) belongs to the caller —
+    // blocks both spoofed creates and ownership transfers.
+    function ownsIncoming() {
+      return signedIn() && request.resource.data.ownerId == request.auth.uid;
+    }
+
+    match /tasks/{taskId} {
+      allow read, delete: if ownsExisting();
+      allow create: if ownsIncoming();
+      allow update: if ownsExisting() && ownsIncoming();
+    }
+
+    match /memories/{memoryId} {
+      allow read, delete: if ownsExisting();
+      allow create: if ownsIncoming();
+      allow update: if ownsExisting() && ownsIncoming();
+    }
+
+    // Plans land in Phase 4; locking the collection down now costs nothing.
+    match /plans/{planId} {
+      allow read, delete: if ownsExisting();
+      allow create: if ownsIncoming();
+      allow update: if ownsExisting() && ownsIncoming();
+    }
+
+    // Server-only telemetry — no client access, not even to your own rollup.
+    match /cost_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /cost_daily/{rollupId} {
+      allow read, write: if false;
+    }
+
+    // Deny by default. (Unmatched paths are denied anyway; this states it.)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
