@@ -1,0 +1,11 @@
+{
+  // Typechecks the generator. Kept separate from tsconfig.json so `npm run build`
+  // emits only the schemas into dist/ — the generator is a build-time script and is
+  // never published or imported by the server.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["schemas", "codegen", "tests"]
+}
