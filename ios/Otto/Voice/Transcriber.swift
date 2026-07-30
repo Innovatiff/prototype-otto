@@ -90,9 +90,18 @@ final class Transcriber {
     private(set) var isRunning = false
 
     private var eventContinuation: AsyncStream<TranscriberEvent>.Continuation?
+    private var levelContinuation: AsyncStream<Float>.Continuation?
 
     init(audioSession: AudioSessionController) {
         self.audioSession = audioSession
+    }
+
+    /// Mic energy (dBFS) per chunk while listening — drives the waveform.
+    /// Single consumer; lossy buffering, levels are display-only.
+    func levels() -> AsyncStream<Float> {
+        let (stream, continuation) = AsyncStream.makeStream(of: Float.self, bufferingPolicy: .bufferingNewest(8))
+        levelContinuation = continuation
+        return stream
     }
 
     // MARK: - Model assets
@@ -251,6 +260,7 @@ final class Transcriber {
     private func consumeChunks(_ chunks: AsyncStream<AudioChunk>) async {
         for await chunk in chunks {
             guard isRunning else { break }
+            levelContinuation?.yield(chunk.energyDb)
             feedAnalyzer(chunk.buffer)
             updateEndpointState(energyDb: chunk.energyDb, at: chunk.at)
         }

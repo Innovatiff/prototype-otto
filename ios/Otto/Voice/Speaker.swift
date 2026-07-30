@@ -59,8 +59,8 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
     private(set) var isSpeaking = false
     private(set) var lastFirstAudioAt: Date?
 
-    /// Set by VoiceLoop once the cache exists; speak(clip:) prefers it.
-    var clipCache: ClipCache?
+    /// Injected at init; speak(clip:) prefers it over live synthesis.
+    private let clipCache: ClipCache?
 
     /// Incremented on every session start, stop, and engine restart; buffer
     /// and completion callbacks carry the generation they belong to and are
@@ -74,8 +74,9 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
     private var drainContinuation: CheckedContinuation<Void, Never>?
     private var restartTask: Task<Void, Never>?
 
-    init(audioSession: AudioSessionController) {
+    init(audioSession: AudioSessionController, clipCache: ClipCache? = nil) {
         self.audioSession = audioSession
+        self.clipCache = clipCache
     }
 
     // MARK: - Speaker
