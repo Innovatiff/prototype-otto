@@ -62,6 +62,9 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Otto listens so you can talk to it."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Otto transcribes your speech on this device to understand you."
+        # Required for a physical device to reach the dev server on the Mac's
+        # LAN IP — without it iOS denies local-network connections outright.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Otto connects to your development server on your local network."
 
         # Simulator needs no signing team; set DEVELOPMENT_TEAM here once the
         # Apple Developer Program membership lands.
