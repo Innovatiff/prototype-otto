@@ -128,7 +128,12 @@ final class ConversationModel {
         guard !text.isEmpty else { return }
         composerText = ""
         Task {
-            guard await self.prepareForTurn() else { return }
+            guard await self.prepareForTurn() else {
+                // Give the message back — a failed precondition (signed out,
+                // bad server URL) must not eat what the user typed.
+                self.composerText = text
+                return
+            }
             await self.voiceLoop.submitText(text)
         }
     }
@@ -170,6 +175,12 @@ final class ConversationModel {
                 // Reached after done AND after barge-in — either way the
                 // otto row is finished growing.
                 ottoTurnOpen = false
+            }
+            if newState == .idle {
+                // The conversation can end (stop button, interruption) while
+                // the last row is still a live partial; seal it so a later,
+                // unrelated turn can't overwrite it in place.
+                finalizeTrailingUserRow()
             }
             if newState == .idle || newState == .thinking {
                 micBars = Self.silentBars
@@ -213,6 +224,12 @@ final class ConversationModel {
 
     private func appendNotice(_ text: String) {
         entries.append(TranscriptEntry(role: .notice, text: text, isFinal: true))
+    }
+
+    private func finalizeTrailingUserRow() {
+        if let index = entries.indices.last, entries[index].role == .user, !entries[index].isFinal {
+            entries[index].isFinal = true
+        }
     }
 
     private func handleLevel(_ db: Float) {
