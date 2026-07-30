@@ -1,0 +1,56 @@
+# XcodeGen manifest — generates Otto.xcodeproj (which is gitignored):
+#
+#   brew install xcodegen
+#   cd ios && xcodegen generate && open Otto.xcodeproj
+#
+# Re-run `xcodegen generate` after adding/removing files (including after
+# `npm run codegen` adds a NEW file to Otto/Models, and after placing
+# GoogleService-Info.plist).
+name: Otto
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "26.0"
+
+packages:
+  firebase-ios-sdk:
+    url: https://github.com/firebase/firebase-ios-sdk.git
+    from: 12.0.0
+
+targets:
+  Otto:
+    type: application
+    platform: iOS
+    sources:
+      # Everything under Otto/, including generated Models/ and (once you drop
+      # it in) GoogleService-Info.plist, which XcodeGen adds as a resource.
+      - path: Otto
+    dependencies:
+      - package: firebase-ios-sdk
+        product: FirebaseAuth
+      - package: firebase-ios-sdk
+        product: FirebaseCore
+    settings:
+      base:
+        # Matches the iOS app registered in the Firebase console
+        # (GoogleService-Info.plist BUNDLE_ID). Change both together.
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourname.otto
+        PRODUCT_NAME: Otto
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+
+        SWIFT_VERSION: "6.0"
+        # REQUIRED by the generated models in Otto/Models (see their headers):
+        # under MainActor-by-default isolation their Codable conformances
+        # cannot compile. Do not flip this to MainActor.
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+
+        # Simulator needs no signing team; set DEVELOPMENT_TEAM here once the
+        # Apple Developer Program membership lands.
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_EMIT_LOC_STRINGS: NO
