@@ -5,13 +5,16 @@
   "type": "module",
   "description": "Otto — a voice-first personal assistant (workspace root)",
   "workspaces": [
-    "shared"
+    "shared",
+    "server"
   ],
   "scripts": {
     "codegen": "tsx shared/codegen/swift.ts",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build -w @otto/shared && npm run build -w @otto/server",
+    "typecheck": "npm run build -w @otto/shared && npm run typecheck -w @otto/shared && npm run typecheck -w @otto/server",
+    "test": "npm run build -w @otto/shared && npm run test -w @otto/shared && npm run test -w @otto/server",
+    "dev": "npm run build -w @otto/shared && npm run dev -w @otto/server",
+    "deploy": "bash server/deploy.sh"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

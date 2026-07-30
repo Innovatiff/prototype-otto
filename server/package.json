@@ -1,0 +1,29 @@
+{
+  "name": "@otto/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Otto API — Express on Cloud Run",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@google-cloud/secret-manager": "^6.3.0",
+    "@otto/shared": "*",
+    "express": "^5.2.1",
+    "firebase-admin": "^14.2.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.2"
+  }
+}

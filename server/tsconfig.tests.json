@@ -1,0 +1,10 @@
+{
+  // Typechecks the tests alongside src without emitting anything; the build
+  // config keeps rootDir at src so dist/ never contains test output.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src", "tests"]
+}

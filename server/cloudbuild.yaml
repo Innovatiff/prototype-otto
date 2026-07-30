@@ -1,0 +1,10 @@
+# Builds the server image from the repo root (the Dockerfile needs shared/).
+# Invoked by server/deploy.sh:
+#   gcloud builds submit --config=server/cloudbuild.yaml --substitutions=_IMAGE=... .
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["build", "-f", "server/Dockerfile", "-t", "${_IMAGE}", "."]
+images:
+  - "${_IMAGE}"
+options:
+  logging: CLOUD_LOGGING_ONLY

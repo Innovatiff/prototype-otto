@@ -1,0 +1,16 @@
+# Build context is the repo root; keep it lean and keep secrets out.
+.git
+node_modules
+**/node_modules
+**/dist
+ios
+*.md
+
+# Never in an image, belt and suspenders with .gitignore:
+.env
+.env.*
+secrets
+*.p8
+service-account*.json
+GoogleService-Info.plist
+**/.DS_Store
