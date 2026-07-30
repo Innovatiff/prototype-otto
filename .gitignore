@@ -5,7 +5,9 @@ service-account*.json
 .env.*
 !.env.example
 GoogleService-Info.plist
-secrets/
+# Root-level credentials directory only — anchored so it can never swallow
+# source directories like server/src/secrets/
+/secrets/
 
 # ── OS ──────────────────────────────────────────────────────────────
 .DS_Store
