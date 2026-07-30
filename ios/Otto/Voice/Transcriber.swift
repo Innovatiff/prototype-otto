@@ -107,7 +107,7 @@ final class Transcriber {
     // MARK: - Model assets
 
     /// Resolves the transcription locale and downloads the on-device model if
-    /// this is the first run. Call once at app start (and show progress UI in
+    /// anything is missing. Call once at app start (and show progress UI in
     /// a later phase — the download can be tens of megabytes).
     static func ensureModelInstalled() async throws -> Locale {
         let preferred = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current)
@@ -115,22 +115,27 @@ final class Transcriber {
         guard let locale = preferred ?? fallback else {
             throw TranscriberError.localeNotSupported
         }
+        try await installAssetsIfNeeded(for: locale)
+        return locale
+    }
 
-        let installed = await SpeechTranscriber.installedLocales
-        if installed.contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) {
-            return locale
-        }
-
+    /// Asks the system for whatever assets our exact module configuration
+    /// still needs. Never gate this on `installedLocales`: the language
+    /// models are shared system assets that iOS deletes under disk pressure,
+    /// so "installed once" guarantees nothing. When everything is present the
+    /// request comes back nil and this returns immediately.
+    private static func installAssetsIfNeeded(for locale: Locale) async throws {
         let module = SpeechTranscriber(
             locale: locale,
             transcriptionOptions: [],
-            reportingOptions: [],
+            // Must match the live transcriber's configuration in start() so
+            // the asset check covers what we actually run.
+            reportingOptions: [.volatileResults, .fastResults],
             attributeOptions: []
         )
         if let request = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
             try await request.downloadAndInstall()
         }
-        return locale
     }
 
     // MARK: - Events
@@ -166,7 +171,15 @@ final class Transcriber {
             reportingOptions: [.volatileResults, .fastResults],
             attributeOptions: []
         )
-        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+        var bestFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
+        if bestFormat == nil {
+            // No format means the language model is not actually available —
+            // the system may have evicted it since the last check. One
+            // install-and-retry heals that without user intervention.
+            try await Self.installAssetsIfNeeded(for: locale)
+            bestFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
+        }
+        guard let format = bestFormat else {
             throw TranscriberError.analyzerFormatUnavailable
         }
         analyzerFormat = format
