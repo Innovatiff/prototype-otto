@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import { AppError, IdParam, parseOrThrow } from "../errors.js";
 import { COLLECTIONS, db } from "../firestore.js";
-import { logWarning } from "../log.js";
+import { logInfo, logWarning } from "../log.js";
 import { parseMemoryDoc } from "../memory/docs.js";
 import { tryEmbed } from "../memory/embed.js";
 import { requireUid } from "../middleware/auth.js";
@@ -129,6 +129,29 @@ memoryRouter.patch("/:id", async (req: Request, res: Response): Promise<void> =>
       { merge: true },
     );
   res.json(merged);
+});
+
+/**
+ * Deletes every memory the caller owns — the memory screen's "Delete all",
+ * which confirms client-side first. Batched under Firestore's 500-write cap.
+ */
+memoryRouter.delete("/", async (req: Request, res: Response): Promise<void> => {
+  const uid = requireUid(req);
+  let deleted = 0;
+  for (;;) {
+    const snapshot = await memoriesCollection().where("ownerId", "==", uid).limit(450).get();
+    if (snapshot.empty) {
+      break;
+    }
+    const batch = db().batch();
+    for (const doc of snapshot.docs) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+    deleted += snapshot.size;
+  }
+  logInfo("memories_deleted_all", { userId: uid, deleted });
+  res.json({ deleted });
 });
 
 memoryRouter.delete("/:id", async (req: Request, res: Response): Promise<void> => {

@@ -11,21 +11,23 @@ import FirebaseCore
 struct OttoApp: App {
     @State private var conversation: ConversationModel
     @State private var settings: DebugModel
+    @State private var memory: MemoryModel
 
     init() {
         FirebaseApp.configure()
         // EmailPasswordAuth is the Phase 0 AuthProvider. Sign in with Apple
         // becomes a second implementation of the same protocol later — this
-        // line is the only one that changes. One instance feeds both models
+        // line is the only one that changes. One instance feeds every model
         // so sign-in state is shared.
         let auth = EmailPasswordAuth()
         _settings = State(initialValue: DebugModel(auth: auth))
         _conversation = State(initialValue: ConversationModel(auth: auth))
+        _memory = State(initialValue: MemoryModel(auth: auth))
     }
 
     var body: some Scene {
         WindowGroup {
-            ConversationView(model: conversation, settings: settings)
+            ConversationView(model: conversation, settings: settings, memory: memory)
         }
     }
 }

@@ -9,7 +9,10 @@ struct ConversationView: View {
     @Bindable var model: ConversationModel
     /// The Phase 0 debug screen, reused as settings: server URL + account.
     @Bindable var settings: DebugModel
+    /// Everything Otto remembers — viewable, editable, deletable.
+    @Bindable var memory: MemoryModel
     @State private var showingSettings = false
+    @State private var showingMemory = false
 
     var body: some View {
         NavigationStack {
@@ -32,6 +35,14 @@ struct ConversationView: View {
                             Image(systemName: "square.and.pencil")
                         }
                         .accessibilityLabel("New conversation")
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showingMemory = true
+                        } label: {
+                            Image(systemName: "brain")
+                        }
+                        .accessibilityLabel("Memory")
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
@@ -58,6 +69,9 @@ struct ConversationView: View {
         )
         .sheet(isPresented: $showingSettings) {
             DebugView(model: settings)
+        }
+        .sheet(isPresented: $showingMemory) {
+            MemoryView(model: memory)
         }
         .sheet(item: $model.composeRequest) { request in
             MessageComposeView(request: request) {
