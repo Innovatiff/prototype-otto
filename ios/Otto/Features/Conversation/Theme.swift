@@ -26,7 +26,10 @@ enum OttoTheme {
 /// This is what makes the orb read as light, not as a vector circle.
 @MainActor
 enum OrbGrain {
-    static let image: UIImage = render(canvas: 560, rimRadius: 170, spread: 70, grains: 20000)
+    /// Two independent grain fields; crossfading between them makes the
+    /// corona twinkle and drift without any rotation.
+    static let fieldA: UIImage = render(canvas: 560, rimRadius: 170, spread: 72, grains: 30000)
+    static let fieldB: UIImage = render(canvas: 560, rimRadius: 170, spread: 72, grains: 30000)
 
     private static func render(
         canvas: CGFloat,
@@ -70,6 +73,8 @@ struct EclipseOrb: View {
     var size: CGFloat = 250
 
     @State private var breathing = false
+    /// Crossfade phase between the two grain fields — the corona's twinkle.
+    @State private var shimmer = false
     /// Autonomous pulse while Otto talks — his output level isn't tapped, so
     /// the voice reads as a rhythmic burn rather than a meter.
     @State private var speakingPulse = false
@@ -104,18 +109,24 @@ struct EclipseOrb: View {
                 )
                 .frame(width: size, height: size)
 
-            // The corona: the cached grain field, twice — one blurred into a
-            // halo, one crisp on top. Static by design; the life is in the
-            // energy, not in motion.
-            Image(uiImage: OrbGrain.image)
+            // The corona: a blurred under-halo, then two grain fields
+            // crossfading and micro-scaling out of phase — grains twinkle
+            // and drift, but nothing rotates.
+            Image(uiImage: OrbGrain.fieldA)
                 .resizable()
                 .frame(width: size, height: size)
-                .opacity(0.55 * energy)
+                .opacity(0.5 * energy)
                 .blur(radius: 5)
-            Image(uiImage: OrbGrain.image)
+            Image(uiImage: OrbGrain.fieldA)
                 .resizable()
                 .frame(width: size, height: size)
-                .opacity(energy)
+                .opacity(energy * (shimmer ? 1.0 : 0.45))
+                .scaleEffect(shimmer ? 1.012 : 1.0)
+            Image(uiImage: OrbGrain.fieldB)
+                .resizable()
+                .frame(width: size, height: size)
+                .opacity(energy * (shimmer ? 0.45 : 1.0))
+                .scaleEffect(shimmer ? 1.0 : 1.012)
 
             // The black disc with the thinnest bright edge.
             Circle()
@@ -133,6 +144,9 @@ struct EclipseOrb: View {
         .animation(.linear(duration: 0.09), value: level)
         .onAppear {
             breathing = true
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                shimmer = true
+            }
         }
         .onChange(of: state) { _, newState in
             if newState == .speaking {
@@ -148,6 +162,33 @@ struct EclipseOrb: View {
             }
         }
         .accessibilityHidden(true)
+    }
+}
+
+/// The big mic — a full-white disc with a soft elevation ring and glow,
+/// black glyph, exactly the reference's center control.
+struct MicButton: View {
+    let systemName: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                // The soft ring the white disc sits in.
+                Circle()
+                    .fill(Color(white: 0.12))
+                    .frame(width: 104, height: 104)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 74, height: 74)
+                    .shadow(color: .white.opacity(0.22), radius: 18)
+                    .shadow(color: .black.opacity(0.55), radius: 10, y: 5)
+                Image(systemName: systemName)
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(Color.black)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

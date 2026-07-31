@@ -233,11 +233,7 @@ struct ConversationView: View {
 
             Spacer()
 
-            CircleIconButton(
-                systemName: model.state == .idle ? "mic" : "stop.fill",
-                prominent: model.state != .idle,
-                diameter: 76
-            ) {
+            MicButton(systemName: model.state == .idle ? "mic.fill" : "stop.fill") {
                 model.toggleVoice()
             }
             .disabled(!model.signedIn)
