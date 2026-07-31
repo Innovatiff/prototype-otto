@@ -13,6 +13,8 @@ import type { TurnEvent } from "@otto/shared";
 import { AppError, parseOrThrow } from "../errors.js";
 import { streamAssistantTurn, type LlmMessage, type LlmTurnResult } from "../llm/anthropic.js";
 import { errorFields, logError, logInfo } from "../log.js";
+import { extractMemories } from "../memory/extract.js";
+import { retrieveMemories } from "../memory/retrieve.js";
 import { requireUid } from "../middleware/auth.js";
 import { addressTermAllowed, buildSystemPrompt } from "../persona/system.js";
 import { classify } from "../router/classify.js";
@@ -77,21 +79,23 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     throw new AppError(400, "invalid_request", "Turn text is empty.");
   }
 
-  // Session memory and the owner's profile ride on every model call. Loading
+  // Session, profile, and retrieved memories ride on every model call —
+  // loaded in parallel (retrieval includes an embedding round trip). Loading
   // before routing lets contextTokens reflect the real payload size.
   const now = new Date();
-  const [session, user] = await Promise.all([
+  const [session, user, memories] = await Promise.all([
     loadOrCreateSession(uid, turn.sessionId, now),
     loadUserProfile(uid, now),
+    retrieveMemories(uid, text, now),
   ]);
   const messages: LlmMessage[] = [
     ...session.messages.map((m): LlmMessage => ({ role: m.role, content: m.content })),
     { role: "user", content: text },
   ];
 
-  // The persona, in two parts around the cache breakpoint. Memories and
-  // active tasks are wired in at Steps 3–4; empty blocks render until then.
-  const prompt = buildSystemPrompt(user, [], [], {
+  // The persona, in two parts around the cache breakpoint. Active tasks are
+  // wired in at Step 4; that block renders empty until then.
+  const prompt = buildSystemPrompt(user, memories, [], {
     now,
     timezone: turn.timezone,
     addressAllowed: addressTermAllowed(user.addressTerm, session.messages),
@@ -178,6 +182,16 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       await appendExchange({
         session,
         userId: uid,
+        userText: text,
+        assistantText,
+        now: new Date(),
+      });
+      // Passive memory extraction: deliberately un-awaited — the spoken
+      // response must never wait on it. extractMemories catches everything
+      // internally.
+      void extractMemories({
+        userId: uid,
+        turnId: turn.turnId,
         userText: text,
         assistantText,
         now: new Date(),

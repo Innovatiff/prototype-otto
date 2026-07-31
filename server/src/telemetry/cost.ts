@@ -16,8 +16,12 @@ export type CostPurpose = "converse" | "extract_memory" | "brief" | "plan";
 export interface CostEventInput {
   userId: string;
   turnId: string;
-  /** The router's choice for this turn — the routing mix, not the bill. */
-  tier: Tier;
+  /**
+   * The router's choice for this turn — the routing mix, not the bill.
+   * "background" marks off-turn work (memory extraction) that never went
+   * through routing; it counts in no byTier bucket.
+   */
+  tier: Tier | "background";
   /**
    * The model actually called. null means no API call was made (the future
    * on-device tiers), which is free by construction. This can differ from the
@@ -40,6 +44,7 @@ export interface CostEventInput {
 const USD_PER_MILLION_TOKENS: Readonly<Record<string, { input: number; output: number }>> = {
   "claude-sonnet-5": { input: 3, output: 15 },
   "claude-opus-5": { input: 5, output: 25 },
+  "claude-haiku-4-5": { input: 1, output: 5 },
 };
 
 /** Cache reads bill at 0.1x the input rate; 5-minute cache writes at 1.25x. */

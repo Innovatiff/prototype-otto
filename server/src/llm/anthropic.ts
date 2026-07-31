@@ -21,10 +21,11 @@ const MAX_OUTPUT_TOKENS = 512;
 let client: Anthropic | null = null;
 
 /**
- * Lazy so the server can boot without the key configured; the first turn that
- * actually needs it surfaces getSecret's typed 500 instead.
+ * Lazy so the server can boot without the key configured; the first call that
+ * actually needs it surfaces getSecret's typed 500 instead. Shared by the
+ * converse stream and the background extraction pass.
  */
-function getClient(): Anthropic {
+export function getAnthropicClient(): Anthropic {
   if (client === null) {
     client = new Anthropic({ apiKey: getSecret("ANTHROPIC_API_KEY") });
   }
@@ -104,7 +105,7 @@ export async function streamAssistantTurn(input: LlmTurnInput): Promise<LlmTurnR
   // history]. Tools serialize ahead of system, so the one cache_control
   // marker on the static block caches tools + identity together; everything
   // that varies per turn comes after it or hits are impossible.
-  const stream = getClient().messages.stream(
+  const stream = getAnthropicClient().messages.stream(
     {
       model: input.model,
       max_tokens: MAX_OUTPUT_TOKENS,

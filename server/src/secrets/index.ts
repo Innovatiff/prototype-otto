@@ -14,8 +14,8 @@ import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 import { AppError } from "../errors.js";
 import { errorFields, logInfo, logWarning } from "../log.js";
 
-/** Every secret this service may read. Phase 1 starts using the first one. */
-export const KNOWN_SECRETS = ["ANTHROPIC_API_KEY"] as const;
+/** Every secret this service may read. */
+export const KNOWN_SECRETS = ["ANTHROPIC_API_KEY", "VOYAGE_API_KEY"] as const;
 export type SecretName = (typeof KNOWN_SECRETS)[number];
 
 const cache = new Map<SecretName, string>();

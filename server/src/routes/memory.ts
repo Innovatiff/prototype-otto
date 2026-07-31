@@ -7,13 +7,15 @@
  * here is exactly the case userEdited exists to record.)
  */
 import { Router, type Request, type Response } from "express";
-import type { Query } from "firebase-admin/firestore";
+import { FieldValue, type Query } from "firebase-admin/firestore";
 import { Memory, MemoryCategory } from "@otto/shared";
 import { z } from "zod";
 
 import { AppError, IdParam, parseOrThrow } from "../errors.js";
 import { COLLECTIONS, db } from "../firestore.js";
 import { logWarning } from "../log.js";
+import { parseMemoryDoc } from "../memory/docs.js";
+import { tryEmbed } from "../memory/embed.js";
 import { requireUid } from "../middleware/auth.js";
 
 export const memoryRouter = Router();
@@ -38,14 +40,16 @@ async function readOwnedMemory(id: string, uid: string): Promise<Memory> {
   if (data === undefined) {
     throw new AppError(404, "not_found", "Memory not found.");
   }
-  const parsed = Memory.safeParse(data);
-  if (!parsed.success) {
+  // parseMemoryDoc separates the stored VectorValue embedding from the wire
+  // shape — the vector never leaves the server.
+  const parsed = parseMemoryDoc(data);
+  if (parsed === null) {
     throw new AppError(500, "internal", "Stored memory failed validation.");
   }
-  if (parsed.data.ownerId !== uid) {
+  if (parsed.memory.ownerId !== uid) {
     throw new AppError(404, "not_found", "Memory not found.");
   }
-  return parsed.data;
+  return parsed.memory;
 }
 
 memoryRouter.post("/", async (req: Request, res: Response): Promise<void> => {
@@ -58,7 +62,12 @@ memoryRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     ownerId: uid,
     createdAt: new Date().toISOString(),
   });
-  await ref.set(memory);
+  // Embed for vector retrieval; a failure stores the memory without a vector.
+  const vector = await tryEmbed(memory.content, "document");
+  await ref.set({
+    ...memory,
+    ...(vector !== null ? { embedding: FieldValue.vector(vector) } : {}),
+  });
   res.status(201).json(memory);
 });
 
@@ -73,9 +82,9 @@ memoryRouter.get("/", async (req: Request, res: Response): Promise<void> => {
   const snapshot = await scoped.orderBy("createdAt", "desc").limit(query.limit).get();
   const memories: Memory[] = [];
   for (const doc of snapshot.docs) {
-    const parsed = Memory.safeParse(doc.data());
-    if (parsed.success) {
-      memories.push(parsed.data);
+    const parsed = parseMemoryDoc(doc.data());
+    if (parsed !== null) {
+      memories.push(parsed.memory);
     } else {
       logWarning("corrupt_memory_skipped", { id: doc.id });
     }
@@ -105,7 +114,20 @@ memoryRouter.patch("/:id", async (req: Request, res: Response): Promise<void> =>
     ownerId: existing.ownerId,
     createdAt: existing.createdAt,
   });
-  await memoriesCollection().doc(id).set(merged);
+  // Changed content needs a fresh vector or similarity search would keep
+  // matching the old wording; unchanged content keeps the stored vector
+  // (set with merge preserves fields we do not name).
+  const contentChanged = merged.content !== existing.content;
+  const vector = contentChanged ? await tryEmbed(merged.content, "document") : null;
+  await memoriesCollection()
+    .doc(id)
+    .set(
+      {
+        ...merged,
+        ...(vector !== null ? { embedding: FieldValue.vector(vector) } : {}),
+      },
+      { merge: true },
+    );
   res.json(merged);
 });
 

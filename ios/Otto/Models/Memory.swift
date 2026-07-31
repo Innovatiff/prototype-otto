@@ -21,6 +21,8 @@ struct Memory: Codable, Hashable, Sendable, Identifiable {
     var confidence: Double
     var sourceTurnId: String
     var supersedes: String?
+    var supersededBy: String?
+    var conflictsWith: String?
     var createdAt: Date
     var lastUsedAt: Date?
     var userEdited: Bool
@@ -34,6 +36,8 @@ struct Memory: Codable, Hashable, Sendable, Identifiable {
         confidence: Double,
         sourceTurnId: String,
         supersedes: String? = nil,
+        supersededBy: String? = nil,
+        conflictsWith: String? = nil,
         createdAt: Date,
         lastUsedAt: Date? = nil,
         userEdited: Bool = false
@@ -46,6 +50,8 @@ struct Memory: Codable, Hashable, Sendable, Identifiable {
         self.confidence = confidence
         self.sourceTurnId = sourceTurnId
         self.supersedes = supersedes
+        self.supersededBy = supersededBy
+        self.conflictsWith = conflictsWith
         self.createdAt = createdAt
         self.lastUsedAt = lastUsedAt
         self.userEdited = userEdited
@@ -60,6 +66,8 @@ struct Memory: Codable, Hashable, Sendable, Identifiable {
         case confidence
         case sourceTurnId
         case supersedes
+        case supersededBy
+        case conflictsWith
         case createdAt
         case lastUsedAt
         case userEdited
@@ -75,6 +83,8 @@ struct Memory: Codable, Hashable, Sendable, Identifiable {
         self.confidence = try container.decode(Double.self, forKey: .confidence)
         self.sourceTurnId = try container.decode(String.self, forKey: .sourceTurnId)
         self.supersedes = try container.decodeIfPresent(String.self, forKey: .supersedes)
+        self.supersededBy = try container.decodeIfPresent(String.self, forKey: .supersededBy)
+        self.conflictsWith = try container.decodeIfPresent(String.self, forKey: .conflictsWith)
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
         self.lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
         self.userEdited = try container.decodeIfPresent(Bool.self, forKey: .userEdited) ?? false
@@ -90,6 +100,8 @@ struct Memory: Codable, Hashable, Sendable, Identifiable {
         try container.encode(self.confidence, forKey: .confidence)
         try container.encode(self.sourceTurnId, forKey: .sourceTurnId)
         try container.encodeIfPresent(self.supersedes, forKey: .supersedes)
+        try container.encodeIfPresent(self.supersededBy, forKey: .supersededBy)
+        try container.encodeIfPresent(self.conflictsWith, forKey: .conflictsWith)
         try container.encode(self.createdAt, forKey: .createdAt)
         try container.encodeIfPresent(self.lastUsedAt, forKey: .lastUsedAt)
         try container.encode(self.userEdited, forKey: .userEdited)

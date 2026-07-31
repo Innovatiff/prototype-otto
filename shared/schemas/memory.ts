@@ -29,6 +29,13 @@ export const Memory = z.object({
   sourceTurnId: zId,
   /** id of a memory this replaces. */
   supersedes: zId.optional(),
+  /** Set on the OLD memory when a newer one replaced it; retrieval skips these. */
+  supersededBy: zId.optional(),
+  /**
+   * Set when this fact contradicts a userEdited memory: the edited one is
+   * never auto-overwritten, so the new fact is stored alongside and flagged.
+   */
+  conflictsWith: zId.optional(),
   createdAt: isoDateTime,
   lastUsedAt: isoDateTime.optional(),
   /** When true, Otto must never auto-overwrite this memory. */
