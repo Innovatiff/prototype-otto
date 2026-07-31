@@ -9,6 +9,7 @@
 import Anthropic, { APIUserAbortError } from "@anthropic-ai/sdk";
 
 import { getSecret } from "../secrets/index.js";
+import { OTTO_TOOLS } from "../tools/definitions.js";
 
 /**
  * Hard output cap. The persona keeps spoken answers under 40 words (~60
@@ -98,14 +99,21 @@ export async function streamAssistantTurn(input: LlmTurnInput): Promise<LlmTurnR
   let sawFinalUsage = false;
   let streamedChars = 0;
 
-  // Prompt order is load-bearing for caching: [cached static prefix] →
-  // [dynamic context, after the breakpoint] → [conversation history]. The
-  // cache_control marker ends the cached region; everything that varies per
-  // turn must come after it or hits are impossible.
+  // Prompt order is load-bearing for caching: [tools] → [cached static
+  // prefix] → [dynamic context, after the breakpoint] → [conversation
+  // history]. Tools serialize ahead of system, so the one cache_control
+  // marker on the static block caches tools + identity together; everything
+  // that varies per turn comes after it or hits are impossible.
   const stream = getClient().messages.stream(
     {
       model: input.model,
       max_tokens: MAX_OUTPUT_TOKENS,
+      tools: [...OTTO_TOOLS],
+      // Step 2: definitions ride in the cached prefix but the model cannot
+      // call them yet — the execution loop lands with the converse rebuild.
+      // Flipping tool_choice later does not invalidate the tools+system
+      // cache region (only message-position breakpoints are affected).
+      tool_choice: { type: "none" },
       system: [
         {
           type: "text",
