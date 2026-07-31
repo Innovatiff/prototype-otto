@@ -31,6 +31,9 @@ struct OttoApp: App {
     var body: some Scene {
         WindowGroup {
             ConversationView(model: conversation, settings: settings, memory: memory, tasks: tasks)
+                // Otto's stage is dark-first and monochrome; sheets inherit.
+                .preferredColorScheme(.dark)
+                .tint(.white)
         }
     }
 }
