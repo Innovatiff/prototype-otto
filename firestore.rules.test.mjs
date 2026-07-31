@@ -79,6 +79,16 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
     sessions: [],
     createdAt: "2026-07-30T14:00:00.000Z",
   });
+  await setDoc(doc(db, "sessions/sess-alice"), {
+    sessionId: "sess-alice",
+    ownerId: ALICE,
+    startedAt: "2026-07-30T14:00:00.000Z",
+    lastTurnAt: "2026-07-30T14:05:00.000Z",
+    messages: [
+      { role: "user", content: "hi", timestamp: "2026-07-30T14:05:00.000Z" },
+      { role: "assistant", content: "Hello.", timestamp: "2026-07-30T14:05:01.000Z" },
+    ],
+  });
   await setDoc(doc(db, "cost_events/evt-1"), {
     userId: ALICE,
     turnId: "turn-1",
@@ -179,6 +189,22 @@ test("plans: cross-user read rejected, owner read succeeds", async () => {
 });
 
 // ── cost telemetry: server-only, no client access at all ─────────────
+
+test("sessions: server-only — the owner cannot read or write their own session", async () => {
+  await assertFails(getDoc(doc(alice, "sessions/sess-alice")));
+  await assertFails(
+    getDocs(query(collection(alice, "sessions"), where("ownerId", "==", ALICE))),
+  );
+  await assertFails(
+    setDoc(doc(alice, "sessions/sess-forged"), {
+      sessionId: "sess-forged",
+      ownerId: ALICE,
+      startedAt: "2026-07-30T14:00:00.000Z",
+      lastTurnAt: "2026-07-30T14:00:00.000Z",
+      messages: [],
+    }),
+  );
+});
 
 test("cost_events: no client read or write, even by the user it concerns", async () => {
   await assertFails(getDoc(doc(alice, "cost_events/evt-1")));

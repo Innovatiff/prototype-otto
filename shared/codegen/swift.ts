@@ -49,6 +49,7 @@ import { z } from "zod";
 import * as taskSchemas from "../schemas/task.js";
 import * as memorySchemas from "../schemas/memory.js";
 import * as planSchemas from "../schemas/plan.js";
+import * as sessionSchemas from "../schemas/session.js";
 import * as turnSchemas from "../schemas/turn.js";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ const MODULES: readonly ModuleSpec[] = [
   { swiftFile: "Task", source: "shared/schemas/task.ts", schemas: taskSchemas },
   { swiftFile: "Memory", source: "shared/schemas/memory.ts", schemas: memorySchemas },
   { swiftFile: "Plan", source: "shared/schemas/plan.ts", schemas: planSchemas },
+  { swiftFile: "Session", source: "shared/schemas/session.ts", schemas: sessionSchemas },
   { swiftFile: "Turn", source: "shared/schemas/turn.ts", schemas: turnSchemas },
 ];
 

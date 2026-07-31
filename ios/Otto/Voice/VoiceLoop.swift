@@ -47,6 +47,9 @@ enum ConversationEvent: Sendable {
     case userFinal(String)
     case ottoToken(String)
     case ottoDone
+    /// The server's effective conversation session for the last turn — the
+    /// model persists it so a relaunch resumes the same conversation.
+    case session(String)
     case timing(TurnTimings)
     case notice(String)
 }
@@ -175,6 +178,7 @@ actor VoiceLoop {
 
     private let auth: any AuthProvider
     private var serverURL: URL?
+    private var sessionId: String?
     private var locale: Locale?
 
     private var audioSession: AudioSessionController?
@@ -202,6 +206,13 @@ actor VoiceLoop {
 
     func configure(serverURL: URL) {
         self.serverURL = serverURL
+    }
+
+    /// Seeds (or clears) the conversation session to continue server-side.
+    /// After each turn the loop adopts whatever session the server reports,
+    /// so callers only need this at launch and on explicit reset.
+    func setSession(_ id: String?) {
+        sessionId = id
     }
 
     func setBargeThreshold(_ db: Float) {
@@ -429,7 +440,8 @@ actor VoiceLoop {
             turnId: UUID().uuidString,
             text: transcript,
             clientTimestamp: Date(),
-            timezone: TimeZone.current.identifier
+            timezone: TimeZone.current.identifier,
+            sessionId: sessionId
         )
         let client = APIClient(baseURL: serverURL, auth: auth)
         turnTask = Task {
@@ -457,7 +469,10 @@ actor VoiceLoop {
                     clauseBuffer.ingest(token)
                     emit(.ottoToken(token))
                 case .done:
-                    break
+                    if let id = event.data?.objectValue?["sessionId"]?.stringValue {
+                        sessionId = id
+                        emit(.session(id))
+                    }
                 case .error:
                     emit(.notice("Server error: \(event.data?.stringValue ?? "unknown")"))
                 case .taskCreated, .taskUpdated:

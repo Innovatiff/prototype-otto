@@ -11,11 +11,12 @@ import { TurnRequest } from "@otto/shared";
 import type { TurnEvent } from "@otto/shared";
 
 import { AppError, parseOrThrow } from "../errors.js";
-import { streamAssistantTurn, type LlmTurnResult } from "../llm/anthropic.js";
+import { streamAssistantTurn, type LlmMessage, type LlmTurnResult } from "../llm/anthropic.js";
 import { errorFields, logError, logInfo } from "../log.js";
 import { requireUid } from "../middleware/auth.js";
 import { classify } from "../router/classify.js";
 import { estimateTokens, route, TIER_MODELS, type RouteInput } from "../router/selectModel.js";
+import { appendExchange, loadOrCreateSession } from "../sessions/index.js";
 import { recordCostEvent } from "../telemetry/cost.js";
 
 export const converseRouter = Router();
@@ -74,6 +75,15 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     throw new AppError(400, "invalid_request", "Turn text is empty.");
   }
 
+  // Session memory: prior turns ride along on every model call. Loading
+  // before routing lets contextTokens reflect the real payload size.
+  const now = new Date();
+  const session = await loadOrCreateSession(uid, turn.sessionId, now);
+  const messages: LlmMessage[] = [
+    ...session.messages.map((m): LlmMessage => ({ role: m.role, content: m.content })),
+    { role: "user", content: text },
+  ];
+
   const intent = classify(text);
   const routeInput: RouteInput = {
     intent,
@@ -82,7 +92,7 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     // planning pipeline in later phases.
     requiresMemory: intent === "question",
     requiresMultiStep: intent === "plan_request",
-    contextTokens: estimateTokens(text),
+    contextTokens: messages.reduce((sum, m) => sum + estimateTokens(m.content), 0),
   };
   const decision = route(routeInput, { turnId: turn.turnId, userId: uid });
   // local and pcc run on-device in a later phase. Until that path exists the
@@ -118,19 +128,26 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
   };
 
   const startedAt = Date.now();
+  // Accumulated as it streams — for the session document, not for the wire;
+  // every delta still goes straight out through onToken.
+  let assistantText = "";
   try {
     const { tokensWritten, result } = await streamLlmTurn(
       sink,
       (onToken) =>
         streamAssistantTurn({
           model,
-          userText: text,
+          messages,
           userId: uid,
           signal: abort.signal,
-          onToken,
+          onToken: (delta: string): void => {
+            assistantText += delta;
+            onToken(delta);
+          },
         }),
       (r) => ({
         turnId: turn.turnId,
+        sessionId: session.sessionId,
         tier: decision.tier,
         model,
         stopReason: r.stopReason,
@@ -138,6 +155,20 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       }),
     );
     const latencyMs = Date.now() - startedAt;
+
+    // The exchange enters session memory even when the turn was barged into —
+    // the user heard part of it, so context-wise it happened. A turn that
+    // produced no text at all is not remembered (and an empty assistant
+    // message would be rejected by the API on the next call anyway).
+    if (assistantText.trim().length > 0) {
+      await appendExchange({
+        session,
+        userId: uid,
+        userText: text,
+        assistantText,
+        now: new Date(),
+      });
+    }
 
     // Record telemetry before ending the response: Cloud Run only guarantees
     // CPU while a request is in flight. recordCostEvent never throws.
@@ -157,6 +188,8 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     logInfo("turn_completed", {
       turnId: turn.turnId,
       userId: uid,
+      sessionId: session.sessionId,
+      historyMessages: session.messages.length,
       intent,
       tier: decision.tier,
       model,

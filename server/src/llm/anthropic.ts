@@ -55,9 +55,19 @@ export interface LlmTurnResult {
   aborted: boolean;
 }
 
+/** One line of conversation context, oldest first, ending with the new user turn. */
+export interface LlmMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface LlmTurnInput {
   model: string;
-  userText: string;
+  /**
+   * Full conversation: session history plus the current user message last.
+   * Sent in its entirety — the model has no other memory of prior turns.
+   */
+  messages: LlmMessage[];
   /** Forwarded as metadata.user_id for Anthropic-side abuse attribution. */
   userId: string;
   /** Abort to stop generation (client disconnected or barged in). */
@@ -92,6 +102,10 @@ export async function streamAssistantTurn(input: LlmTurnInput): Promise<LlmTurnR
   let sawFinalUsage = false;
   let streamedChars = 0;
 
+  // Prompt order is load-bearing for caching: [cached static prefix] →
+  // [dynamic context (persona+memories, Phase 2) — after the breakpoint] →
+  // [conversation history]. History changes every turn, so everything that
+  // varies must sit after the cache_control marker or hits are impossible.
   const stream = getClient().messages.stream(
     {
       model: input.model,
@@ -103,7 +117,7 @@ export async function streamAssistantTurn(input: LlmTurnInput): Promise<LlmTurnR
           cache_control: { type: "ephemeral" },
         },
       ],
-      messages: [{ role: "user", content: input.userText }],
+      messages: input.messages,
       thinking: { type: "disabled" },
       metadata: { user_id: input.userId },
     },

@@ -50,6 +50,12 @@ service cloud.firestore {
       allow update: if ownsExisting() && ownsIncoming();
     }
 
+    // Conversation sessions are written and read only by the API server —
+    // clients carry just the sessionId string.
+    match /sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
     // Server-only telemetry — no client access, not even to your own rollup.
     match /cost_events/{eventId} {
       allow read, write: if false;

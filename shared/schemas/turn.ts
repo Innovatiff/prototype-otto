@@ -8,6 +8,12 @@ export const TurnRequest = z.object({
   clientTimestamp: isoDateTime,
   /** IANA timezone identifier, e.g. "America/Toronto". */
   timezone: z.string().min(1),
+  /**
+   * The conversation to continue. When absent, unknown, expired, or owned by
+   * someone else, the server starts a fresh session and returns the effective
+   * id in the `done` event data — clients adopt whatever comes back.
+   */
+  sessionId: zId.optional(),
 });
 export type TurnRequest = z.infer<typeof TurnRequest>;
 

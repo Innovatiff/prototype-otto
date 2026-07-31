@@ -35,6 +35,10 @@ final class ConversationModel {
     private(set) var entries: [TranscriptEntry] = []
     private(set) var signedIn = false
 
+    /// The server-side conversation being continued. Persisted so a relaunch
+    /// within the session's 30-minute idle window keeps its context.
+    private(set) var sessionId: String?
+
     /// The permanently visible composer. Voice is the default, never a
     /// requirement — this field must always work.
     var composerText = ""
@@ -62,6 +66,7 @@ final class ConversationModel {
     // MARK: - Plumbing
 
     private static let bargeThresholdKey = "otto.debug.bargeThresholdDb"
+    private static let sessionKey = "otto.sessionId"
     private static let barCount = 36
     private static var silentBars: [Float] { Array(repeating: 0, count: barCount) }
 
@@ -77,6 +82,7 @@ final class ConversationModel {
         self.voiceLoop = VoiceLoop(auth: auth)
         self.bargeThresholdDb =
             (UserDefaults.standard.object(forKey: Self.bargeThresholdKey) as? Float) ?? -30
+        self.sessionId = UserDefaults.standard.string(forKey: Self.sessionKey)
         self.signedIn = auth.currentUserId != nil
     }
 
@@ -99,7 +105,11 @@ final class ConversationModel {
             }
         }
         let threshold = bargeThresholdDb
-        Task { await self.voiceLoop.setBargeThreshold(threshold) }
+        let session = sessionId
+        Task {
+            await self.voiceLoop.setBargeThreshold(threshold)
+            await self.voiceLoop.setSession(session)
+        }
     }
 
     /// Re-reads auth state — called on appear and whenever the settings
@@ -145,6 +155,17 @@ final class ConversationModel {
         }
     }
 
+    /// Clears the session and transcript; the next turn starts a fresh
+    /// conversation server-side. Speech already in flight is left to finish.
+    func newConversation() {
+        sessionId = nil
+        UserDefaults.standard.removeObject(forKey: Self.sessionKey)
+        entries = []
+        ottoTurnOpen = false
+        lastTimings = nil
+        Task { await self.voiceLoop.setSession(nil) }
+    }
+
     // MARK: - Turn preconditions
 
     /// Signed in + a parseable server URL pushed into the loop. Failures land
@@ -162,6 +183,9 @@ final class ConversationModel {
             return false
         }
         await voiceLoop.configure(serverURL: url)
+        // Idempotent re-seed: kills any launch race between activate()'s
+        // seeding task and the first turn.
+        await voiceLoop.setSession(sessionId)
         return true
     }
 
@@ -193,6 +217,9 @@ final class ConversationModel {
             appendOttoToken(token)
         case .ottoDone:
             ottoTurnOpen = false
+        case .session(let id):
+            sessionId = id
+            UserDefaults.standard.set(id, forKey: Self.sessionKey)
         case .timing(let timings):
             lastTimings = timings
             if overlayVisible {

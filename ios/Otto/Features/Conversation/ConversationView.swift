@@ -24,6 +24,14 @@ struct ConversationView: View {
                 .navigationTitle("Otto")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            model.newConversation()
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                        .accessibilityLabel("New conversation")
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             showingSettings = true

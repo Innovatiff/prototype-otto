@@ -13,6 +13,7 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
 export const COLLECTIONS = {
   tasks: "tasks",
   memories: "memories",
+  sessions: "sessions",
   costEvents: "cost_events",
   costDaily: "cost_daily",
 } as const;
