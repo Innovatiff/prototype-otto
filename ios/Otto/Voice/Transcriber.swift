@@ -42,10 +42,12 @@ struct AudioChunk: @unchecked Sendable {
 /// On-device streaming transcription (SpeechAnalyzer + SpeechTranscriber,
 /// iOS 26) with Otto's own endpoint detection layered on top.
 ///
-/// Endpointing fires on whichever comes first:
-///   (a) 700ms of continuous silence below the VAD energy threshold, or
-///   (b) the partial transcript reads as a complete utterance AND 350ms of
-///       silence has elapsed.
+/// Endpointing is two-tier:
+///   (a) the partial transcript reads as a complete utterance AND 350ms of
+///       silence has elapsed — the fast path; or
+///   (b) the transcript reads unfinished, and silence has outlasted the
+///       LEARNED pause window (0.9–2s, adapted to this speaker's rhythm).
+/// The silence threshold itself tracks the ambient noise floor.
 ///
 /// Each listening session is single-shot: `start()` builds a fresh analyzer,
 /// the endpoint (or `cancel()`) tears it down. The endpoint transcript is the
@@ -57,16 +59,35 @@ final class Transcriber {
 
     // MARK: - Tunables
 
-    /// Mic energy below this (dBFS) counts as silence. With voice processing
-    /// enabled the residual floor sits well under this; raise it if endpoint
-    /// fires early in noisy rooms.
-    var silenceThresholdDb: Float = -44
+    /// Endpointing is two-tier and adaptive:
+    ///   - an utterance that READS complete fires after a short silence;
+    ///   - one that reads unfinished ("I don't…") gets a much wider window,
+    ///     and that window is LEARNED from this speaker: every pause they
+    ///     talk through stretches it (persisted across launches);
+    ///   - the silence threshold self-calibrates to the ambient floor, so a
+    ///     soft speaker in a quiet room is not mistaken for silence.
 
-    /// Rule (a): hard silence endpoint.
-    var hardSilenceMs: Double = 700
-
-    /// Rule (b): silence required after a semantically complete utterance.
+    /// Silence required after a semantically complete utterance.
     var semanticSilenceMs: Double = 350
+
+    /// Bounds for the learned incomplete-utterance window.
+    static let minPauseWindowMs: Double = 900
+    static let maxPauseWindowMs: Double = 2000
+
+    /// Silence required when the transcript reads unfinished. Learned from
+    /// the speaker's own mid-sentence pauses; persisted.
+    private(set) var pauseWindowMs: Double
+
+    /// Mic energy below this (dBFS) counts as silence: the tracked ambient
+    /// floor plus a margin, clamped so neither a dead-quiet room nor a noisy
+    /// one can push it somewhere absurd.
+    var silenceThresholdDb: Float {
+        min(-35, max(-55, ambientFloorDb + 12))
+    }
+
+    private var ambientFloorDb: Float = -60
+    private var sessionMaxPauseMs: Double = 0
+    private static let pauseWindowKey = "otto.voice.learnedPauseMs"
 
     // MARK: - State
 
@@ -94,6 +115,9 @@ final class Transcriber {
 
     init(audioSession: AudioSessionController) {
         self.audioSession = audioSession
+        let stored = UserDefaults.standard.double(forKey: Self.pauseWindowKey)
+        self.pauseWindowMs =
+            stored >= Self.minPauseWindowMs ? min(stored, Self.maxPauseWindowMs) : 1100
     }
 
     /// Mic energy (dBFS) per chunk while listening — drives the waveform.
@@ -162,6 +186,7 @@ final class Transcriber {
         speechEverDetected = false
         endpointFired = false
         lastVoiceAt = Date()
+        sessionMaxPauseMs = 0
 
         let transcriber = SpeechTranscriber(
             locale: locale,
@@ -304,7 +329,17 @@ final class Transcriber {
     private func updateEndpointState(energyDb: Float, at: Date) {
         guard !endpointFired else { return }
 
+        trackAmbient(energyDb)
+
         if energyDb > silenceThresholdDb {
+            if speechEverDetected {
+                // A pause the user then talked through is their rhythm, not
+                // an ending — remember the longest one.
+                let gapMs = at.timeIntervalSince(lastVoiceAt) * 1000
+                if gapMs >= 300 {
+                    sessionMaxPauseMs = max(sessionMaxPauseMs, min(gapMs, Self.maxPauseWindowMs))
+                }
+            }
             speechEverDetected = true
             lastVoiceAt = at
             return
@@ -315,14 +350,38 @@ final class Transcriber {
         guard !transcript.isEmpty else { return }
 
         let silenceMs = at.timeIntervalSince(lastVoiceAt) * 1000
-        let semanticallyDone = Self.isSemanticallyComplete(transcript)
-        if silenceMs >= hardSilenceMs || (semanticallyDone && silenceMs >= semanticSilenceMs) {
+        let window = Self.isSemanticallyComplete(transcript) ? semanticSilenceMs : pauseWindowMs
+        if silenceMs >= window {
             fireEndpoint(transcript: transcript)
         }
     }
 
+    /// Quiet chunks pull the floor down quickly; louder ones leak it up very
+    /// slowly, so a noisy minute cannot permanently deafen the endpointer.
+    private func trackAmbient(_ energyDb: Float) {
+        if energyDb < ambientFloorDb + 6 {
+            ambientFloorDb = 0.9 * ambientFloorDb + 0.1 * energyDb
+        } else {
+            ambientFloorDb = min(ambientFloorDb + 0.05, -45)
+        }
+    }
+
+    /// Folds this session's observed pauses into the persistent window:
+    /// growing readily, shrinking cautiously — cutting someone off costs far
+    /// more than waiting an extra beat.
+    private func adaptPauseWindow() {
+        let target = min(Self.maxPauseWindowMs, max(Self.minPauseWindowMs, sessionMaxPauseMs + 300))
+        let blended =
+            target > pauseWindowMs
+            ? 0.5 * pauseWindowMs + 0.5 * target
+            : 0.9 * pauseWindowMs + 0.1 * target
+        pauseWindowMs = min(Self.maxPauseWindowMs, max(Self.minPauseWindowMs, blended))
+        UserDefaults.standard.set(pauseWindowMs, forKey: Self.pauseWindowKey)
+    }
+
     private func fireEndpoint(transcript: String) {
         endpointFired = true
+        adaptPauseWindow()
         let endedAt = lastVoiceAt
         eventContinuation?.yield(.endpoint(transcript: transcript, speechEndedAt: endedAt))
         teardown()
@@ -356,24 +415,53 @@ final class Transcriber {
     // MARK: - Semantic completion
 
     /// Words a trailing fragment hangs on — an utterance ending in one of
-    /// these is mid-thought no matter how long the pause feels.
+    /// these is mid-thought no matter how long the pause feels. Curation
+    /// leans toward holding: an extra beat of patience is cheap, a
+    /// mid-sentence cut is not.
     private static let continuationWords: Set<String> = [
+        // conjunctions / prepositions / articles
         "and", "or", "but", "to", "the", "a", "an", "my", "your", "of", "in",
-        "on", "at", "for", "with", "so", "then", "that", "is", "are", "was",
-        "if", "because", "um", "uh", "like",
+        "on", "at", "for", "with", "so", "then", "that", "if", "because",
+        "also", "plus", "about", "when", "where", "how", "who", "why",
+        // linking / auxiliary verbs, incl. negations — "I don't…" hangs
+        "is", "are", "was", "were", "be", "been",
+        "do", "does", "did", "don't", "doesn't", "didn't",
+        "can", "can't", "cannot", "will", "won't", "would", "wouldn't",
+        "could", "couldn't", "should", "shouldn't", "isn't", "aren't", "wasn't",
+        // dangling subjects — "remind me when I…" hangs
+        "i", "i'm", "i'll", "i've", "we", "we're", "you're", "they're",
+        "he's", "she's",
+        // transitive verbs left hanging — "add…", "remind…"
+        "get", "buy", "add", "need", "want", "make", "remind", "text", "tell",
+        "call", "take", "send", "check", "put", "pick",
+        // fillers
+        "um", "uh", "like",
     ]
 
-    /// Phase 1 heuristic for "parses as a complete utterance": terminal
-    /// punctuation always qualifies; otherwise three-plus words not ending on
-    /// a continuation word. The 50ms on-device intent classifier replaces
-    /// this in a later phase.
+    /// Whole utterances that are complete despite being short — answers and
+    /// acknowledgments must fire fast, not wait out the incomplete window.
+    private static let completeShortAnswers: Set<String> = [
+        "yes", "yeah", "yep", "no", "nope", "sure", "okay", "ok", "stop",
+        "cancel", "done", "right", "correct", "thanks", "thank you",
+        "go ahead", "send it", "never mind", "morning", "good morning",
+        "hello", "hey otto",
+    ]
+
+    /// Heuristic for "parses as a complete utterance": terminal punctuation
+    /// always qualifies; known short answers qualify; otherwise three-plus
+    /// words not ending on a continuation word. The on-device intent
+    /// classifier replaces this in a later phase.
     static func isSemanticallyComplete(_ transcript: String) -> Bool {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         if let last = trimmed.unicodeScalars.last, ".!?".unicodeScalars.contains(last) {
             return true
         }
-        let words = trimmed.lowercased().split(whereSeparator: { $0.isWhitespace })
+        let lowered = trimmed.lowercased().trimmingCharacters(in: .punctuationCharacters)
+        if completeShortAnswers.contains(lowered) {
+            return true
+        }
+        let words = lowered.split(whereSeparator: { $0.isWhitespace })
         guard words.count >= 3, let lastWord = words.last else { return false }
         let stripped = lastWord.trimmingCharacters(in: .punctuationCharacters)
         return !continuationWords.contains(stripped)

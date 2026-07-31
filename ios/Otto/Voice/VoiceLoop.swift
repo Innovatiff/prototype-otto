@@ -70,6 +70,10 @@ struct VoiceDebugSnapshot: Sendable {
     var lastMicLevelDb: Float
     var voiceProcessingEnabled: Bool
     var clipPlayLatencyMs: Double?
+    /// Adaptive endpointing readouts: the live silence threshold and the
+    /// learned incomplete-utterance pause window.
+    var endpointThresholdDb: Float
+    var pauseWindowMs: Double
     var timings: TurnTimings
 }
 
@@ -294,6 +298,8 @@ actor VoiceLoop {
             lastMicLevelDb: lastMicLevelDb,
             voiceProcessingEnabled: await audioSession?.isVoiceProcessingEnabled ?? false,
             clipPlayLatencyMs: await clipCache?.lastPlayLatencyMs,
+            endpointThresholdDb: await transcriber?.silenceThresholdDb ?? -44,
+            pauseWindowMs: await transcriber?.pauseWindowMs ?? 1100,
             timings: timings
         )
     }

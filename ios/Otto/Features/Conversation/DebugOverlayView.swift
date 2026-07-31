@@ -32,6 +32,15 @@ struct DebugOverlayView: View {
                 Spacer()
                 label("clip play", value: ms(model.debugSnapshot?.clipPlayLatencyMs))
             }
+
+            HStack {
+                label(
+                    "endpoint floor",
+                    value: model.debugSnapshot.map { String(format: "%.0f dB", $0.endpointThresholdDb) } ?? "—"
+                )
+                Spacer()
+                label("patience", value: ms(model.debugSnapshot?.pauseWindowMs))
+            }
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
