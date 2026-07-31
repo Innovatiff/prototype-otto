@@ -7,38 +7,29 @@ struct MemoryView: View {
     @FocusState private var focusedMemory: String?
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if model.memories.isEmpty && !model.isLoading {
-                    emptyState
-                } else {
-                    memoryList
-                }
+        // Content-only: the hub provides the page chrome.
+        Group {
+            if model.memories.isEmpty && !model.isLoading {
+                emptyState
+            } else {
+                memoryList
             }
-            .navigationTitle("Memory")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Delete All", role: .destructive) {
-                        confirmingDeleteAll = true
-                    }
-                    .disabled(model.memories.isEmpty)
-                }
-            }
-            .confirmationDialog(
-                "Delete all memories?",
-                isPresented: $confirmingDeleteAll,
-                titleVisibility: .visible
-            ) {
-                Button("Delete Everything", role: .destructive) {
-                    Task { await model.deleteAll() }
-                }
-            } message: {
-                Text("Otto permanently forgets every stored fact. This cannot be undone.")
-            }
-            .task { await model.load() }
-            .refreshable { await model.load() }
         }
+        .scrollContentBackground(.hidden)
+        .background(OttoTheme.background)
+        .confirmationDialog(
+            "Delete all memories?",
+            isPresented: $confirmingDeleteAll,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Everything", role: .destructive) {
+                Task { await model.deleteAll() }
+            }
+        } message: {
+            Text("Otto permanently forgets every stored fact. This cannot be undone.")
+        }
+        .task { await model.load() }
+        .refreshable { await model.load() }
     }
 
     private var memoryList: some View {
@@ -56,6 +47,14 @@ struct MemoryView: View {
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }
+            }
+            // Delete All moved inline — the hub owns the page, so there is
+            // no toolbar to put it in.
+            Section {
+                Button("Delete all memories", role: .destructive) {
+                    confirmingDeleteAll = true
+                }
+                .disabled(model.memories.isEmpty)
             }
         }
     }

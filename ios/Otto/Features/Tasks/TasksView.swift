@@ -7,19 +7,18 @@ struct TasksView: View {
     @Bindable var model: TasksModel
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if model.tasks.isEmpty && !model.isLoading {
-                    emptyState
-                } else {
-                    taskList
-                }
+        // Content-only: the hub provides the page chrome.
+        Group {
+            if model.tasks.isEmpty && !model.isLoading {
+                emptyState
+            } else {
+                taskList
             }
-            .navigationTitle("Tasks")
-            .navigationBarTitleDisplayMode(.inline)
-            .task { await model.load() }
-            .refreshable { await model.load() }
         }
+        .scrollContentBackground(.hidden)
+        .background(OttoTheme.background)
+        .task { await model.load() }
+        .refreshable { await model.load() }
     }
 
     private var taskList: some View {
