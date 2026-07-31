@@ -51,6 +51,7 @@ import * as memorySchemas from "../schemas/memory.js";
 import * as planSchemas from "../schemas/plan.js";
 import * as sessionSchemas from "../schemas/session.js";
 import * as turnSchemas from "../schemas/turn.js";
+import * as userSchemas from "../schemas/user.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Configuration
@@ -70,6 +71,7 @@ const MODULES: readonly ModuleSpec[] = [
   { swiftFile: "Plan", source: "shared/schemas/plan.ts", schemas: planSchemas },
   { swiftFile: "Session", source: "shared/schemas/session.ts", schemas: sessionSchemas },
   { swiftFile: "Turn", source: "shared/schemas/turn.ts", schemas: turnSchemas },
+  { swiftFile: "User", source: "shared/schemas/user.ts", schemas: userSchemas },
 ];
 
 /**

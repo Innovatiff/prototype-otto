@@ -11,16 +11,6 @@ import Anthropic, { APIUserAbortError } from "@anthropic-ai/sdk";
 import { getSecret } from "../secrets/index.js";
 
 /**
- * Phase 1 persona, verbatim from the spec — the full persona and memory
- * injection land in Phase 2. Kept as one static block so the cache_control
- * breakpoint below covers exactly the stable prefix.
- */
-export const OTTO_SYSTEM_PROMPT =
-  "You are Otto, a personal assistant. Answer briefly and directly. Spoken " +
-  "responses should be under 40 words. Never use emoji or exclamation marks. " +
-  "Do not offer follow-up questions unless the user asked for options.";
-
-/**
  * Hard output cap. The persona keeps spoken answers under 40 words (~60
  * tokens); 512 leaves headroom for drafting turns while bounding a runaway
  * response to under a cent.
@@ -64,6 +54,12 @@ export interface LlmMessage {
 export interface LlmTurnInput {
   model: string;
   /**
+   * The two-part system prompt from persona/system.ts. staticPrefix carries
+   * the cache_control breakpoint and must be byte-identical across a user's
+   * turns; dynamic goes after it and is rebuilt every turn.
+   */
+  system: { staticPrefix: string; dynamic: string };
+  /**
    * Full conversation: session history plus the current user message last.
    * Sent in its entirety — the model has no other memory of prior turns.
    */
@@ -103,9 +99,9 @@ export async function streamAssistantTurn(input: LlmTurnInput): Promise<LlmTurnR
   let streamedChars = 0;
 
   // Prompt order is load-bearing for caching: [cached static prefix] →
-  // [dynamic context (persona+memories, Phase 2) — after the breakpoint] →
-  // [conversation history]. History changes every turn, so everything that
-  // varies must sit after the cache_control marker or hits are impossible.
+  // [dynamic context, after the breakpoint] → [conversation history]. The
+  // cache_control marker ends the cached region; everything that varies per
+  // turn must come after it or hits are impossible.
   const stream = getClient().messages.stream(
     {
       model: input.model,
@@ -113,8 +109,12 @@ export async function streamAssistantTurn(input: LlmTurnInput): Promise<LlmTurnR
       system: [
         {
           type: "text",
-          text: OTTO_SYSTEM_PROMPT,
+          text: input.system.staticPrefix,
           cache_control: { type: "ephemeral" },
+        },
+        {
+          type: "text",
+          text: input.system.dynamic,
         },
       ],
       messages: input.messages,

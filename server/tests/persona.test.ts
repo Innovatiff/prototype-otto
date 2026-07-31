@@ -1,0 +1,155 @@
+import { strict as assert } from "node:assert";
+import { test } from "node:test";
+
+import type { ConversationMessage, Memory, Task, UserProfile } from "@otto/shared";
+
+import {
+  addressTermAllowed,
+  buildStaticPrefix,
+  buildSystemPrompt,
+  formatMemories,
+  formatTasks,
+} from "../src/persona/system.js";
+
+const NOW = new Date("2026-07-31T18:05:00.000Z");
+const TS = "2026-07-31T17:00:00.000Z";
+
+function user(addressTerm: string): UserProfile {
+  return { ownerId: "u1", addressTerm, createdAt: TS };
+}
+
+function assistantSays(...contents: string[]): ConversationMessage[] {
+  return contents.map((content) => ({ role: "assistant", content, timestamp: TS }));
+}
+
+// ── The cacheable prefix ────────────────────────────────────────────
+
+test("the static prefix is byte-identical across turns with different dynamic state", () => {
+  const a = buildSystemPrompt(user("Boss"), [], [], {
+    now: NOW,
+    timezone: "America/Toronto",
+    addressAllowed: true,
+  });
+  const b = buildSystemPrompt(user("Boss"), [memory("no pork")], [], {
+    now: new Date("2026-08-01T09:00:00.000Z"),
+    timezone: "Europe/Paris",
+    addressAllowed: false,
+  });
+  assert.equal(a.staticPrefix, b.staticPrefix);
+});
+
+test("the static prefix carries the identity block and never the clock", () => {
+  const prefix = buildStaticPrefix("Boss");
+  assert.ok(prefix.startsWith("You are Otto, a personal assistant."));
+  assert.ok(prefix.includes("Call them Boss."));
+  assert.ok(prefix.includes("THE THREE-BEAT RESPONSE"));
+  assert.ok(prefix.includes("An assistant who ties every answer back to their goals is exhausting."));
+  assert.ok(!prefix.includes("2026"), "a date in the static prefix would break caching");
+});
+
+test("the address term substitutes everywhere, including the one-word example", () => {
+  const prefix = buildStaticPrefix("Chief");
+  assert.ok(prefix.includes("Call them Chief."));
+  assert.ok(prefix.includes('"4:15." not "4:15, Chief."'));
+  assert.ok(!prefix.includes("{{ADDRESS_TERM}}"));
+});
+
+test('addressTerm "none" swaps the section for a prohibition', () => {
+  const prefix = buildStaticPrefix("none");
+  assert.ok(prefix.includes("Do not address them by any name, title, or term of address."));
+  assert.ok(!prefix.includes("At most one in three"));
+});
+
+// ── Server-side address cadence ─────────────────────────────────────
+
+test("allowed with no history, forbidden after either of the last two replies used it", () => {
+  assert.equal(addressTermAllowed("Boss", []), true);
+  assert.equal(addressTermAllowed("Boss", assistantSays("Morning, Boss.")), false);
+  assert.equal(addressTermAllowed("Boss", assistantSays("Morning, Boss.", "4:15.")), false);
+  assert.equal(
+    addressTermAllowed("Boss", assistantSays("Morning, Boss.", "4:15.", "Understood.")),
+    true,
+  );
+});
+
+test("matching is case-insensitive, word-bounded, and ignores user turns", () => {
+  assert.equal(addressTermAllowed("Boss", assistantSays("morning, boss.")), false);
+  assert.equal(addressTermAllowed("Boss", assistantSays("That approach is bossy.")), true);
+  const userMention: ConversationMessage[] = [
+    { role: "user", content: "you can call me Boss", timestamp: TS },
+  ];
+  assert.equal(addressTermAllowed("Boss", userMention), true);
+});
+
+test('"none" is never allowed', () => {
+  assert.equal(addressTermAllowed("none", []), false);
+});
+
+// ── The dynamic part ────────────────────────────────────────────────
+
+function memory(content: string): Memory {
+  return {
+    id: "m1",
+    ownerId: "u1",
+    category: "constraint",
+    content,
+    confidence: 0.9,
+    sourceTurnId: "t1",
+    createdAt: TS,
+    userEdited: false,
+  };
+}
+
+function walmartTask(): Task {
+  return {
+    id: "t1",
+    ownerId: "u1",
+    intent: "list",
+    title: "Walmart list",
+    context: "Walmart",
+    items: [
+      { id: "i1", text: "onions", checked: true, addedAt: TS },
+      { id: "i2", text: "milk", checked: false, addedAt: TS },
+    ],
+    trigger: { type: "none" },
+    verification: "inline",
+    status: "active",
+    createdAt: TS,
+  };
+}
+
+test("the dynamic part carries clock, gate ruling, memories, and tasks", () => {
+  const parts = buildSystemPrompt(user("Boss"), [memory("Does not eat pork.")], [walmartTask()], {
+    now: NOW,
+    timezone: "America/Toronto",
+    addressAllowed: true,
+  });
+  assert.ok(parts.dynamic.includes("(America/Toronto)"));
+  assert.ok(parts.dynamic.includes("July 31, 2026"));
+  assert.ok(parts.dynamic.includes("You may address them as Boss this turn"));
+  assert.ok(parts.dynamic.includes("- [constraint] Does not eat pork."));
+  assert.ok(parts.dynamic.includes("- Walmart list @ Walmart [list, 2 items (1 open)]"));
+});
+
+test("the gate ruling flips to a prohibition when disallowed", () => {
+  const parts = buildSystemPrompt(user("Boss"), [], [], {
+    now: NOW,
+    timezone: "America/Toronto",
+    addressAllowed: false,
+  });
+  assert.ok(parts.dynamic.includes("Do not use any term of address this turn."));
+});
+
+test("an invalid timezone falls back to UTC instead of throwing", () => {
+  const parts = buildSystemPrompt(user("Boss"), [], [], {
+    now: NOW,
+    timezone: "Not/AZone",
+    addressAllowed: true,
+  });
+  assert.ok(parts.dynamic.includes("(UTC)"));
+});
+
+test("empty blocks render explicit markers, not blanks", () => {
+  assert.equal(formatMemories([]), "(nothing retrieved)");
+  assert.equal(formatTasks([]), "(none)");
+});

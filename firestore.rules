@@ -31,6 +31,14 @@ service cloud.firestore {
       return signedIn() && request.resource.data.ownerId == request.auth.uid;
     }
 
+    // The owner's profile. Document id IS the uid, so identity is the path.
+    match /users/{userId} {
+      allow read, delete: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.ownerId == userId;
+    }
+
     match /tasks/{taskId} {
       allow read, delete: if ownsExisting();
       allow create: if ownsIncoming();

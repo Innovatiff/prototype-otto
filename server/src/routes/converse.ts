@@ -14,10 +14,12 @@ import { AppError, parseOrThrow } from "../errors.js";
 import { streamAssistantTurn, type LlmMessage, type LlmTurnResult } from "../llm/anthropic.js";
 import { errorFields, logError, logInfo } from "../log.js";
 import { requireUid } from "../middleware/auth.js";
+import { addressTermAllowed, buildSystemPrompt } from "../persona/system.js";
 import { classify } from "../router/classify.js";
 import { estimateTokens, route, TIER_MODELS, type RouteInput } from "../router/selectModel.js";
 import { appendExchange, loadOrCreateSession } from "../sessions/index.js";
 import { recordCostEvent } from "../telemetry/cost.js";
+import { loadUserProfile } from "../users/index.js";
 
 export const converseRouter = Router();
 
@@ -75,14 +77,25 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     throw new AppError(400, "invalid_request", "Turn text is empty.");
   }
 
-  // Session memory: prior turns ride along on every model call. Loading
+  // Session memory and the owner's profile ride on every model call. Loading
   // before routing lets contextTokens reflect the real payload size.
   const now = new Date();
-  const session = await loadOrCreateSession(uid, turn.sessionId, now);
+  const [session, user] = await Promise.all([
+    loadOrCreateSession(uid, turn.sessionId, now),
+    loadUserProfile(uid, now),
+  ]);
   const messages: LlmMessage[] = [
     ...session.messages.map((m): LlmMessage => ({ role: m.role, content: m.content })),
     { role: "user", content: text },
   ];
+
+  // The persona, in two parts around the cache breakpoint. Memories and
+  // active tasks are wired in at Steps 3–4; empty blocks render until then.
+  const prompt = buildSystemPrompt(user, [], [], {
+    now,
+    timezone: turn.timezone,
+    addressAllowed: addressTermAllowed(user.addressTerm, session.messages),
+  });
 
   const intent = classify(text);
   const routeInput: RouteInput = {
@@ -137,6 +150,7 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       (onToken) =>
         streamAssistantTurn({
           model,
+          system: prompt,
           messages,
           userId: uid,
           signal: abort.signal,

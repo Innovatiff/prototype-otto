@@ -79,6 +79,11 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
     sessions: [],
     createdAt: "2026-07-30T14:00:00.000Z",
   });
+  await setDoc(doc(db, `users/${ALICE}`), {
+    ownerId: ALICE,
+    addressTerm: "Boss",
+    createdAt: "2026-07-30T14:00:00.000Z",
+  });
   await setDoc(doc(db, "sessions/sess-alice"), {
     sessionId: "sess-alice",
     ownerId: ALICE,
@@ -189,6 +194,27 @@ test("plans: cross-user read rejected, owner read succeeds", async () => {
 });
 
 // ── cost telemetry: server-only, no client access at all ─────────────
+
+test("users: the owner reads and writes their own profile; nobody else's", async () => {
+  await assertSucceeds(getDoc(doc(alice, `users/${ALICE}`)));
+  await assertSucceeds(
+    setDoc(doc(alice, `users/${ALICE}`), {
+      ownerId: ALICE,
+      addressTerm: "Chief",
+      createdAt: "2026-07-30T14:00:00.000Z",
+    }),
+  );
+  await assertFails(getDoc(doc(bob, `users/${ALICE}`)));
+  await assertFails(getDoc(doc(anon, `users/${ALICE}`)));
+  // Writing a profile whose ownerId is not the path uid is forged.
+  await assertFails(
+    setDoc(doc(alice, `users/${ALICE}`), {
+      ownerId: BOB,
+      addressTerm: "Boss",
+      createdAt: "2026-07-30T14:00:00.000Z",
+    }),
+  );
+});
 
 test("sessions: server-only — the owner cannot read or write their own session", async () => {
   await assertFails(getDoc(doc(alice, "sessions/sess-alice")));

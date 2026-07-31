@@ -11,6 +11,7 @@ import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
 export const COLLECTIONS = {
+  users: "users",
   tasks: "tasks",
   memories: "memories",
   sessions: "sessions",
