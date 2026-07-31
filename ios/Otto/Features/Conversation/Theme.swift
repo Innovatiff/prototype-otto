@@ -26,7 +26,7 @@ enum OttoTheme {
 /// This is what makes the orb read as light, not as a vector circle.
 @MainActor
 enum OrbGrain {
-    static let image: UIImage = render(canvas: 560, rimRadius: 170, spread: 66, grains: 9000)
+    static let image: UIImage = render(canvas: 560, rimRadius: 170, spread: 70, grains: 20000)
 
     private static func render(
         canvas: CGFloat,
@@ -70,7 +70,9 @@ struct EclipseOrb: View {
     var size: CGFloat = 250
 
     @State private var breathing = false
-    @State private var turning = false
+    /// Autonomous pulse while Otto talks — his output level isn't tapped, so
+    /// the voice reads as a rhythmic burn rather than a meter.
+    @State private var speakingPulse = false
 
     private var energy: Double {
         switch state {
@@ -81,7 +83,7 @@ struct EclipseOrb: View {
         case .thinking:
             return 0.7
         case .speaking:
-            return 0.65 + Double(level) * 0.3
+            return (speakingPulse ? 0.95 : 0.6) + Double(level) * 0.2
         }
     }
 
@@ -102,19 +104,18 @@ struct EclipseOrb: View {
                 )
                 .frame(width: size, height: size)
 
-            // The corona: the cached grain field, twice — one crisp, one
-            // blurred halo — turning imperceptibly so it shimmers.
+            // The corona: the cached grain field, twice — one blurred into a
+            // halo, one crisp on top. Static by design; the life is in the
+            // energy, not in motion.
             Image(uiImage: OrbGrain.image)
                 .resizable()
                 .frame(width: size, height: size)
                 .opacity(0.55 * energy)
                 .blur(radius: 5)
-                .rotationEffect(.degrees(turning ? -360 : 0))
             Image(uiImage: OrbGrain.image)
                 .resizable()
                 .frame(width: size, height: size)
                 .opacity(energy)
-                .rotationEffect(.degrees(turning ? 360 : 0))
 
             // The black disc with the thinnest bright edge.
             Circle()
@@ -127,15 +128,24 @@ struct EclipseOrb: View {
                 )
         }
         .scaleEffect(breathing ? 1.012 : 0.988)
+        .scaleEffect(speakingPulse ? 1.04 : 1.0)
         .animation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true), value: breathing)
-        .animation(
-            .linear(duration: state == .thinking ? 40 : 160).repeatForever(autoreverses: false),
-            value: turning
-        )
         .animation(.linear(duration: 0.09), value: level)
         .onAppear {
             breathing = true
-            turning = true
+        }
+        .onChange(of: state) { _, newState in
+            if newState == .speaking {
+                // A strong rhythmic pulse — scale and corona brightness
+                // together — for as long as Otto is talking.
+                withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
+                    speakingPulse = true
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    speakingPulse = false
+                }
+            }
         }
         .accessibilityHidden(true)
     }

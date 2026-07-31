@@ -80,13 +80,13 @@ struct ConversationView: View {
             EclipseOrb(
                 state: model.state,
                 level: model.micBars.last ?? 0,
-                size: 270
+                size: 320
             )
 
-            Spacer(minLength: 18)
+            Spacer(minLength: 16)
 
             dialogue
-                .frame(maxHeight: 190)
+                .frame(maxHeight: 170)
 
             Spacer(minLength: 8)
         }
