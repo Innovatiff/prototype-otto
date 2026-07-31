@@ -12,6 +12,7 @@ struct OttoApp: App {
     @State private var conversation: ConversationModel
     @State private var settings: DebugModel
     @State private var memory: MemoryModel
+    @State private var tasks: TasksModel
 
     init() {
         FirebaseApp.configure()
@@ -20,14 +21,16 @@ struct OttoApp: App {
         // line is the only one that changes. One instance feeds every model
         // so sign-in state is shared.
         let auth = EmailPasswordAuth()
+        let tasksModel = TasksModel(auth: auth)
         _settings = State(initialValue: DebugModel(auth: auth))
-        _conversation = State(initialValue: ConversationModel(auth: auth))
+        _tasks = State(initialValue: tasksModel)
+        _conversation = State(initialValue: ConversationModel(auth: auth, tasksModel: tasksModel))
         _memory = State(initialValue: MemoryModel(auth: auth))
     }
 
     var body: some Scene {
         WindowGroup {
-            ConversationView(model: conversation, settings: settings, memory: memory)
+            ConversationView(model: conversation, settings: settings, memory: memory, tasks: tasks)
         }
     }
 }

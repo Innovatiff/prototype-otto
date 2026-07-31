@@ -11,8 +11,11 @@ struct ConversationView: View {
     @Bindable var settings: DebugModel
     /// Everything Otto remembers — viewable, editable, deletable.
     @Bindable var memory: MemoryModel
+    /// Lists and reminders, live-updated as Otto works.
+    @Bindable var tasks: TasksModel
     @State private var showingSettings = false
     @State private var showingMemory = false
+    @State private var showingTasks = false
 
     var body: some View {
         NavigationStack {
@@ -35,6 +38,14 @@ struct ConversationView: View {
                             Image(systemName: "square.and.pencil")
                         }
                         .accessibilityLabel("New conversation")
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showingTasks = true
+                        } label: {
+                            Image(systemName: "checklist")
+                        }
+                        .accessibilityLabel("Tasks")
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
@@ -72,6 +83,9 @@ struct ConversationView: View {
         }
         .sheet(isPresented: $showingMemory) {
             MemoryView(model: memory)
+        }
+        .sheet(isPresented: $showingTasks) {
+            TasksView(model: tasks)
         }
         .sheet(item: $model.composeRequest) { request in
             MessageComposeView(request: request) {

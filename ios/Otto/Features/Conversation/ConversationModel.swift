@@ -92,13 +92,17 @@ final class ConversationModel {
     /// Created with the model at app start so its notification delegate is
     /// installed before any reminder can fire in the foreground.
     private let reminders = ReminderScheduler()
+    /// The task screen's state — task events upsert into it live so
+    /// voice-added items animate in while the screen is open.
+    private let tasksModel: TasksModel
     private var activated = false
     private var ottoTurnOpen = false
     private var eventTask: Task<Void, Never>?
     private var levelTask: Task<Void, Never>?
 
-    init(auth: any AuthProvider) {
+    init(auth: any AuthProvider, tasksModel: TasksModel) {
         self.auth = auth
+        self.tasksModel = tasksModel
         self.voiceLoop = VoiceLoop(auth: auth)
         self.bargeThresholdDb =
             (UserDefaults.standard.object(forKey: Self.bargeThresholdKey) as? Float) ?? -30
@@ -265,6 +269,7 @@ final class ConversationModel {
         case .capturedUtterance(let text):
             Task { await self.handleDraftReply(text) }
         case .task(let task):
+            tasksModel.apply(task)
             Task {
                 let outcome = await self.reminders.handle(task)
                 if case .permissionDenied = outcome {
