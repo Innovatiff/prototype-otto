@@ -35,9 +35,7 @@ struct ConversationView: View {
             }
         )
         .sheet(isPresented: $showingHub) {
-            HubView(tasks: tasks, memory: memory) {
-                model.newConversation()
-            }
+            HubView(tasks: tasks, memory: memory)
         }
         .sheet(isPresented: $showingSettings) {
             DebugView(model: settings)
