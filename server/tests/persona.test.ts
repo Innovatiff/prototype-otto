@@ -42,6 +42,7 @@ test("the static prefix carries the identity block and never the clock", () => {
   const prefix = buildStaticPrefix("Boss");
   assert.ok(prefix.startsWith("You are Otto, a personal assistant."));
   assert.ok(prefix.includes("Call them Boss."));
+  assert.ok(prefix.includes("Never refuse a question because no tool fits it"));
   assert.ok(prefix.includes("THE THREE-BEAT RESPONSE"));
   assert.ok(prefix.includes("An assistant who ties every answer back to their goals is exhausting."));
   assert.ok(!prefix.includes("2026"), "a date in the static prefix would break caching");
