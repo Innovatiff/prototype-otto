@@ -47,6 +47,9 @@ enum ConversationEvent: Sendable {
     case userFinal(String)
     case ottoToken(String)
     case ottoDone
+    /// A task the server created or updated this turn — drives reminder
+    /// scheduling now, and the task UI later.
+    case task(OttoTask)
     /// The server's effective conversation session for the last turn — the
     /// model persists it so a relaunch resumes the same conversation.
     case session(String)
@@ -476,7 +479,9 @@ actor VoiceLoop {
                 case .error:
                     emit(.notice("Server error: \(event.data?.stringValue ?? "unknown")"))
                 case .taskCreated, .taskUpdated:
-                    break // The task UI (Step 8) renders these.
+                    if let task = event.data?.decoded(as: OttoTask.self) {
+                        emit(.task(task))
+                    }
                 case .draft:
                     break // Step 6 reads drafts back and opens the compose sheet.
                 }

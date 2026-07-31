@@ -72,6 +72,9 @@ final class ConversationModel {
 
     private let auth: any AuthProvider
     private let voiceLoop: VoiceLoop
+    /// Created with the model at app start so its notification delegate is
+    /// installed before any reminder can fire in the foreground.
+    private let reminders = ReminderScheduler()
     private var activated = false
     private var ottoTurnOpen = false
     private var eventTask: Task<Void, Never>?
@@ -217,6 +220,15 @@ final class ConversationModel {
             appendOttoToken(token)
         case .ottoDone:
             ottoTurnOpen = false
+        case .task(let task):
+            Task {
+                let outcome = await self.reminders.handle(task)
+                if case .permissionDenied = outcome {
+                    self.appendNotice(
+                        "Notifications are off, so this reminder won't ring. Enable them for Otto in Settings."
+                    )
+                }
+            }
         case .session(let id):
             sessionId = id
             UserDefaults.standard.set(id, forKey: Self.sessionKey)
