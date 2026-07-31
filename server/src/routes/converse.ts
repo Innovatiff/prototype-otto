@@ -21,6 +21,7 @@ import { classify } from "../router/classify.js";
 import { estimateTokens, route, TIER_MODELS, type RouteInput } from "../router/selectModel.js";
 import { appendExchange, loadOrCreateSession } from "../sessions/index.js";
 import { recordCostEvent } from "../telemetry/cost.js";
+import { executeToolUse, loadTasks } from "../tools/execute.js";
 import { loadUserProfile } from "../users/index.js";
 
 export const converseRouter = Router();
@@ -83,19 +84,22 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
   // loaded in parallel (retrieval includes an embedding round trip). Loading
   // before routing lets contextTokens reflect the real payload size.
   const now = new Date();
-  const [session, user, memories] = await Promise.all([
+  const [session, user, memories, activeTasks] = await Promise.all([
     loadOrCreateSession(uid, turn.sessionId, now),
     loadUserProfile(uid, now),
     retrieveMemories(uid, text, now),
+    loadTasks(uid).catch((err: unknown) => {
+      logError("active_tasks_load_failed", { userId: uid, ...errorFields(err) });
+      return [];
+    }),
   ]);
   const messages: LlmMessage[] = [
     ...session.messages.map((m): LlmMessage => ({ role: m.role, content: m.content })),
     { role: "user", content: text },
   ];
 
-  // The persona, in two parts around the cache breakpoint. Active tasks are
-  // wired in at Step 4; that block renders empty until then.
-  const prompt = buildSystemPrompt(user, memories, [], {
+  // The persona, in two parts around the cache breakpoint.
+  const prompt = buildSystemPrompt(user, memories, activeTasks, {
     now,
     timezone: turn.timezone,
     addressAllowed: addressTermAllowed(user.addressTerm, session.messages),
@@ -162,6 +166,19 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
             assistantText += delta;
             onToken(delta);
           },
+          // Tool calls execute here, scoped to this uid; task/draft events go
+          // straight onto the SSE stream between text tokens.
+          onToolUse: (name, toolInput) =>
+            executeToolUse(name, toolInput, {
+              uid,
+              turnId: turn.turnId,
+              now: new Date(),
+              emit: (event): void => {
+                if (!sink.closed) {
+                  sink.write(sseMessage(event));
+                }
+              },
+            }),
         }),
       (r) => ({
         turnId: turn.turnId,
@@ -222,6 +239,7 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       tier: decision.tier,
       model,
       tokenEvents: tokensWritten,
+      toolCalls: result.toolCalls,
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
       cacheReadTokens: result.usage.cacheReadTokens,

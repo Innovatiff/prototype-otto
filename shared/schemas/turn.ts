@@ -22,6 +22,8 @@ export const TurnEventType = z.enum([
   "token",
   "task_created",
   "task_updated",
+  /** A message draft: { recipientName, body }. Never sent server-side. */
+  "draft",
   "done",
   "error",
 ]);

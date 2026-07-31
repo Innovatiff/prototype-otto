@@ -52,6 +52,7 @@ enum TurnEventType: String, Codable, Hashable, Sendable, CaseIterable {
     case taskCreated = "task_created"
     /// Wire value: `"task_updated"`.
     case taskUpdated = "task_updated"
+    case draft
     case done
     case error
 }

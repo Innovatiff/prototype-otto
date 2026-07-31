@@ -57,7 +57,7 @@ function fakeTurn(
       });
       onToken(delta);
     }
-    return { usage: USAGE, stopReason: "end_turn", aborted: false, ...result };
+    return { usage: USAGE, stopReason: "end_turn", aborted: false, toolCalls: 0, ...result };
   };
 }
 

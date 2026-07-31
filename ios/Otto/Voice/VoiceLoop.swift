@@ -476,7 +476,9 @@ actor VoiceLoop {
                 case .error:
                     emit(.notice("Server error: \(event.data?.stringValue ?? "unknown")"))
                 case .taskCreated, .taskUpdated:
-                    break // Phase 2 renders these.
+                    break // The task UI (Step 8) renders these.
+                case .draft:
+                    break // Step 6 reads drafts back and opens the compose sheet.
                 }
             }
             clauseBuffer.finish()

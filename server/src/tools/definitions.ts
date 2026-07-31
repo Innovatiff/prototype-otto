@@ -65,9 +65,9 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
     name: "query_tasks",
     description:
       "Find the user's tasks. All filters optional and combined with AND; " +
-      "context matches case-insensitively. Call this before answering any " +
-      "question about lists, errands, or reminders — never answer from " +
-      "memory of the conversation alone.",
+      "context matches case-insensitively; status defaults to 'active'. " +
+      "Call this before answering any question about lists, errands, or " +
+      "reminders — never answer from memory of the conversation alone.",
     input_schema: {
       type: "object",
       properties: {
