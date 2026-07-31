@@ -50,6 +50,12 @@ enum ConversationEvent: Sendable {
     /// A task the server created or updated this turn — drives reminder
     /// scheduling now, and the task UI later.
     case task(OttoTask)
+    /// A message draft from the server. Nothing is sent; the client reads it
+    /// back aloud and hands off to the system compose sheet.
+    case draft(recipientName: String, body: String)
+    /// A final utterance claimed by an armed capture (draft confirmations)
+    /// instead of becoming a server turn.
+    case capturedUtterance(String)
     /// The server's effective conversation session for the last turn — the
     /// model persists it so a relaunch resumes the same conversation.
     case session(String)
@@ -172,6 +178,7 @@ actor VoiceLoop {
 
     private var conversationActive = false
     private var resumeAfterInterruption = false
+    private var captureNextFinalUtterance = false
     private var turnGeneration = 0
     private var timings = TurnTimings()
     private var lastMicLevelDb: Float = -120
@@ -216,6 +223,50 @@ actor VoiceLoop {
     /// so callers only need this at launch and on explicit reset.
     func setSession(_ id: String?) {
         sessionId = id
+    }
+
+    /// Arms a single-shot claim on the NEXT final utterance: it is emitted as
+    /// .capturedUtterance and never becomes a server turn. The draft flow
+    /// uses this for spoken confirmations.
+    func armUtteranceCapture() {
+        captureNextFinalUtterance = true
+    }
+
+    func disarmUtteranceCapture() {
+        captureNextFinalUtterance = false
+    }
+
+    /// Speaks locally — no server turn — through the same speaker pipeline,
+    /// returning when playback finishes. Used for draft read-backs and flow
+    /// prompts, where the exact words must be deterministic.
+    func announce(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let components = try await ensureComponents()
+            try await components.session.start()
+        } catch {
+            emit(.notice("Audio unavailable: \(error.localizedDescription)"))
+            return
+        }
+        if state == .listening, let transcriber {
+            await transcriber.cancel()
+        }
+        if state == .speaking || state == .thinking {
+            await abortTurn(fade: true)
+        }
+        setState(.speaking)
+        let (stream, continuation) = AsyncStream.makeStream(of: String.self)
+        continuation.yield(trimmed)
+        continuation.finish()
+        if let speaker {
+            try? await speaker.speak(stream)
+        }
+        if conversationActive {
+            await startListening()
+        } else {
+            setState(.idle)
+        }
     }
 
     func setBargeThreshold(_ db: Float) {
@@ -390,6 +441,15 @@ actor VoiceLoop {
         case .endpoint(let transcript, let speechEndedAt):
             guard state == .listening else { return }
             emit(.userFinal(transcript))
+            if captureNextFinalUtterance {
+                // Claimed by the draft flow — no server turn; keep listening.
+                captureNextFinalUtterance = false
+                emit(.capturedUtterance(transcript))
+                Task {
+                    await self.startListening()
+                }
+                return
+            }
             Task {
                 await self.runTurn(
                     transcript: transcript,
@@ -483,7 +543,11 @@ actor VoiceLoop {
                         emit(.task(task))
                     }
                 case .draft:
-                    break // Step 6 reads drafts back and opens the compose sheet.
+                    if let payload = event.data?.objectValue,
+                       let recipientName = payload["recipientName"]?.stringValue,
+                       let body = payload["body"]?.stringValue {
+                        emit(.draft(recipientName: recipientName, body: body))
+                    }
                 }
             }
             clauseBuffer.finish()

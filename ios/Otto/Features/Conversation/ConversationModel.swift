@@ -47,6 +47,23 @@ final class ConversationModel {
     private(set) var micBars: [Float] = ConversationModel.silentBars
     private(set) var lastLevelDb: Float = -120
 
+    // MARK: - Message drafting
+
+    /// Where the draft flow stands. The view shows a confirmation card in
+    /// `.confirming`; spoken confirmations arrive as captured utterances.
+    enum DraftStage: Equatable {
+        case idle
+        case choosingContact(draftBody: String, candidates: [ContactResolver.Candidate])
+        case confirming(ComposeRequest)
+    }
+
+    private(set) var draftStage: DraftStage = .idle
+    /// Drives the system compose sheet (.sheet(item:)).
+    var composeRequest: ComposeRequest?
+
+    private var pendingDraft: (recipientName: String, body: String)?
+    private let contacts = ContactResolver()
+
     // MARK: - Debug overlay
 
     private(set) var overlayVisible = false
@@ -140,6 +157,11 @@ final class ConversationModel {
         let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         composerText = ""
+        // Mid-draft, typed input is the confirmation/choice — never a turn.
+        if draftStage != .idle {
+            Task { await self.handleDraftReply(text) }
+            return
+        }
         Task {
             guard await self.prepareForTurn() else {
                 // Give the message back — a failed precondition (signed out,
@@ -149,6 +171,20 @@ final class ConversationModel {
             }
             await self.voiceLoop.submitText(text)
         }
+    }
+
+    /// Tapped confirmation on the draft card.
+    func confirmDraftTapped() {
+        if case .confirming(let request) = draftStage {
+            composeRequest = request
+            resetDraftFlow()
+        }
+    }
+
+    /// Tapped cancel on the draft card.
+    func cancelDraftTapped() {
+        resetDraftFlow()
+        appendNotice("Draft discarded.")
     }
 
     func toggleOverlay() {
@@ -220,6 +256,14 @@ final class ConversationModel {
             appendOttoToken(token)
         case .ottoDone:
             ottoTurnOpen = false
+            if pendingDraft != nil {
+                // Start the read-back flow only after Otto's own words finish.
+                Task { await self.beginDraftFlow() }
+            }
+        case .draft(let recipientName, let body):
+            pendingDraft = (recipientName, body)
+        case .capturedUtterance(let text):
+            Task { await self.handleDraftReply(text) }
         case .task(let task):
             Task {
                 let outcome = await self.reminders.handle(task)
@@ -269,6 +313,118 @@ final class ConversationModel {
         if let index = entries.indices.last, entries[index].role == .user, !entries[index].isFinal {
             entries[index].isFinal = true
         }
+    }
+
+    // MARK: - Draft flow
+
+    /// parse → resolve contact → READ BACK ALOUD → confirm → compose sheet.
+    /// The read-back is mandatory and deterministic — client-spoken, never
+    /// trusted to the model's own phrasing.
+    private func beginDraftFlow() async {
+        guard let draft = pendingDraft else { return }
+        pendingDraft = nil
+
+        guard MessageComposeView.canSend else {
+            await voiceLoop.announce("This device can't send text messages, so I can't set that up.")
+            return
+        }
+
+        switch await contacts.resolve(name: draft.recipientName) {
+        case .denied:
+            await voiceLoop.announce(
+                "I need contacts access to text people. You can enable it for Otto in Settings."
+            )
+            appendNotice("Contacts access is off — enable it for Otto in Settings.")
+        case .none:
+            await voiceLoop.announce("I don't have \(draft.recipientName) in your contacts.")
+        case .matches(let candidates):
+            if candidates.count == 1, let only = candidates.first {
+                await readBackAndConfirm(candidate: only, body: draft.body)
+            } else {
+                draftStage = .choosingContact(draftBody: draft.body, candidates: candidates)
+                let names = candidates.map(\.displayName).joined(separator: ", ")
+                await voiceLoop.armUtteranceCapture()
+                await voiceLoop.announce(
+                    "I have \(candidates.count) matches: \(names). Which one?"
+                )
+            }
+        }
+    }
+
+    private func readBackAndConfirm(candidate: ContactResolver.Candidate, body: String) async {
+        let request = ComposeRequest(
+            recipientName: candidate.displayName,
+            recipients: [candidate.phoneNumber],
+            body: body
+        )
+        draftStage = .confirming(request)
+        await voiceLoop.armUtteranceCapture()
+        await voiceLoop.announce("To \(candidate.displayName): \(body). Send it?")
+    }
+
+    private static let affirmatives: Set<String> = [
+        "yes", "yeah", "yep", "sure", "send", "send it", "confirm", "do it", "go ahead", "ok", "okay",
+    ]
+    private static let negatives: Set<String> = [
+        "no", "nope", "cancel", "don't", "do not", "stop", "never mind", "nevermind", "discard",
+    ]
+    private static let ordinals = ["first", "second", "third", "fourth", "fifth"]
+
+    /// A spoken (captured) or typed reply while the draft flow is active.
+    private func handleDraftReply(_ text: String) async {
+        let reply = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: .punctuationCharacters)
+
+        switch draftStage {
+        case .idle:
+            return
+        case .choosingContact(let body, let candidates):
+            if Self.negatives.contains(reply) {
+                resetDraftFlow()
+                await voiceLoop.announce("Cancelled.")
+                return
+            }
+            if let picked = Self.pickCandidate(from: candidates, reply: reply) {
+                await readBackAndConfirm(candidate: picked, body: body)
+            } else {
+                resetDraftFlow()
+                await voiceLoop.announce("I couldn't tell which one. Cancelled.")
+            }
+        case .confirming(let request):
+            if Self.affirmatives.contains(reply) {
+                resetDraftFlow()
+                composeRequest = request
+            } else if Self.negatives.contains(reply) {
+                resetDraftFlow()
+                await voiceLoop.announce("Cancelled.")
+            } else {
+                // Anything ambiguous must not send. Cancelling beats guessing.
+                resetDraftFlow()
+                await voiceLoop.announce("That wasn't a yes, so I've discarded the draft.")
+            }
+        }
+    }
+
+    private static func pickCandidate(
+        from candidates: [ContactResolver.Candidate],
+        reply: String
+    ) -> ContactResolver.Candidate? {
+        for (index, ordinal) in ordinals.enumerated() where reply.contains(ordinal) {
+            if index < candidates.count {
+                return candidates[index]
+            }
+        }
+        return candidates.first { candidate in
+            let name = candidate.displayName.lowercased()
+            return name.contains(reply) || reply.contains(name)
+                || name.split(separator: " ").contains { reply.contains($0) }
+        }
+    }
+
+    private func resetDraftFlow() {
+        draftStage = .idle
+        pendingDraft = nil
+        Task { await self.voiceLoop.disarmUtteranceCapture() }
     }
 
     private func handleLevel(_ db: Float) {

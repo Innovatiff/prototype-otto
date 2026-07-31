@@ -65,6 +65,7 @@ targets:
         # Required for a physical device to reach the dev server on the Mac's
         # LAN IP — without it iOS denies local-network connections outright.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Otto connects to your development server on your local network."
+        INFOPLIST_KEY_NSContactsUsageDescription: "Otto looks up the person you name so you can text them."
 
         # Simulator needs no signing team; set DEVELOPMENT_TEAM here once the
         # Apple Developer Program membership lands.

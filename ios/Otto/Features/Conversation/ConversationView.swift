@@ -16,6 +16,7 @@ struct ConversationView: View {
             transcript
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 0) {
+                        draftCard
                         statusStrip
                         composerBar
                     }
@@ -57,6 +58,12 @@ struct ConversationView: View {
         )
         .sheet(isPresented: $showingSettings) {
             DebugView(model: settings)
+        }
+        .sheet(item: $model.composeRequest) { request in
+            MessageComposeView(request: request) {
+                model.composeRequest = nil
+            }
+            .ignoresSafeArea()
         }
         .onChange(of: showingSettings) { _, isPresented in
             if !isPresented {
@@ -139,6 +146,38 @@ struct ConversationView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .center)
+        }
+    }
+
+    // MARK: - Draft confirmation card
+
+    /// Visible while a draft awaits confirmation — the tapped alternative to
+    /// saying "yes". Send hands off to the system compose sheet.
+    @ViewBuilder
+    private var draftCard: some View {
+        if case .confirming(let request) = model.draftStage {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Text to \(request.recipientName)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                Text(request.body)
+                    .font(.callout)
+                    .lineLimit(4)
+                HStack {
+                    Button("Cancel", role: .cancel) {
+                        model.cancelDraftTapped()
+                    }
+                    Spacer()
+                    Button("Send…") {
+                        model.confirmDraftTapped()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(12)
+            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
         }
     }
 
