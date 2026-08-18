@@ -8,8 +8,9 @@
  * guidance runtime never gets an LLM call on the happy path.
  *
  * Mechanics: ONE opus call, the Plan schema as a forced tool input, zod +
- * referential validation in code, ONE retry with the exact errors fed back
- * as an is_error tool result. Never returns an invalid plan.
+ * referential validation and safety checks in code, ONE retry with the exact
+ * errors fed back as an is_error tool result. Never returns an invalid or
+ * unsafe plan.
  */
 import type Anthropic from "@anthropic-ai/sdk";
 import { Plan, Session, ScheduledSession } from "@otto/shared";
@@ -22,6 +23,13 @@ import { TIER_MODELS } from "../router/selectModel.js";
 import { recordCostEvent } from "../telemetry/cost.js";
 import { domainGuidance } from "./domains/index.js";
 import { PlanDomain, type PlanConstraints } from "./interview.js";
+import {
+  checkPlanSafety,
+  constraintsRiskText,
+  detectRiskSignals,
+  PERFORMANCE_FRAMING,
+  type RiskSignal,
+} from "./safety.js";
 
 export const PLAN_MODEL = TIER_MODELS.opus;
 
@@ -226,13 +234,17 @@ delivers what the timeframe can realistically deliver.
 
 Call emit_plan exactly once with the finished plan.`;
 
-function buildUserMessage(constraints: PlanConstraints): string {
-  return [
+function buildUserMessage(constraints: PlanConstraints, riskSignals: RiskSignal[]): string {
+  const parts = [
     domainGuidance(constraints.domain),
     "",
     "CONSTRAINTS (from the interview and memory — respect absolutely):",
     JSON.stringify(constraints),
-  ].join("\n");
+  ];
+  if (riskSignals.length > 0) {
+    parts.push("", PERFORMANCE_FRAMING);
+  }
+  return parts.join("\n");
 }
 
 // ── Generation ──────────────────────────────────────────────────────
@@ -291,12 +303,15 @@ async function recordAttempt(
 export interface GeneratedPlan {
   plan: Plan;
   attempts: number;
+  /** Non-empty when the request was routed to a performance-framed plan. */
+  riskSignals: RiskSignal[];
 }
 
 /**
  * One generation, one retry, or a clear error. The returned Plan is fully
- * validated and stamped with server-owned fields — but NOT persisted;
- * storage, versioning, and metering are the store module's job.
+ * validated (structure + safety) and stamped with server-owned fields — but
+ * NOT persisted; storage, versioning, and metering are the store module's
+ * job.
  */
 export async function generatePlan(input: {
   userId: string;
@@ -304,8 +319,22 @@ export async function generatePlan(input: {
   constraints: PlanConstraints;
   now: Date;
 }): Promise<GeneratedPlan> {
+  // Risk-signal routing happens BEFORE generation: the plan itself gets
+  // performance framing, and the detection is logged for review.
+  const riskSignals =
+    input.constraints.domain === "fitness"
+      ? detectRiskSignals(constraintsRiskText(input.constraints))
+      : [];
+  if (riskSignals.length > 0) {
+    logWarning("plan_risk_signals", {
+      userId: input.userId,
+      turnId: input.turnId,
+      signals: riskSignals,
+    });
+  }
+
   const messages: Anthropic.MessageParam[] = [
-    { role: "user", content: buildUserMessage(input.constraints) },
+    { role: "user", content: buildUserMessage(input.constraints, riskSignals) },
   ];
 
   let lastErrors: string[] = [];
@@ -315,7 +344,12 @@ export async function generatePlan(input: {
     await recordAttempt(input.userId, input.turnId, outcome.usage, startedAt);
 
     const result = validateGeneratedPlan(outcome.raw);
-    if (result.ok) {
+    const errors = result.ok
+      ? checkPlanSafety(result.payload, input.constraints).map(
+          (v) => `safety(${v.rule}): ${v.detail}`,
+        )
+      : result.errors;
+    if (result.ok && errors.length === 0) {
       const ref = db().collection(COLLECTIONS.plans).doc();
       const plan = Plan.parse({
         id: ref.id,
@@ -335,14 +369,14 @@ export async function generatePlan(input: {
         scheduleEntries: plan.schedule.length,
         outputTokens: outcome.usage.output_tokens,
       });
-      return { plan, attempts: attempt };
+      return { plan, attempts: attempt, riskSignals };
     }
 
-    lastErrors = result.errors;
-    logWarning("plan_validation_failed", {
+    lastErrors = errors;
+    logWarning(result.ok ? "plan_safety_failed" : "plan_validation_failed", {
       userId: input.userId,
       attempt,
-      errors: result.errors.slice(0, 10),
+      errors: errors.slice(0, 10),
     });
     if (attempt === 1 && outcome.toolUseId !== null) {
       // Feed the exact errors back as a failed tool result and retry ONCE.
@@ -366,7 +400,7 @@ export async function generatePlan(input: {
               tool_use_id: outcome.toolUseId,
               is_error: true,
               content:
-                "The plan failed validation. Fix EXACTLY these and call " +
+                "The plan failed required checks. Fix EXACTLY these and call " +
                 "emit_plan again with the corrected, complete plan:\n" +
                 lastErrors.join("\n"),
             },
@@ -377,7 +411,7 @@ export async function generatePlan(input: {
   }
 
   throw new PlanGenerationError(
-    "Plan generation failed validation twice. Nothing was saved.",
+    "Plan generation failed its checks twice. Nothing was saved.",
     2,
     lastErrors,
   );
