@@ -66,6 +66,7 @@ targets:
         # LAN IP — without it iOS denies local-network connections outright.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Otto connects to your development server on your local network."
         INFOPLIST_KEY_NSContactsUsageDescription: "Otto looks up the person you name so you can text them."
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Otto reads your calendar to prepare your day and flag conflicts, and adds events only when you confirm them."
 
         # Simulator needs no signing team; set DEVELOPMENT_TEAM here once the
         # Apple Developer Program membership lands.

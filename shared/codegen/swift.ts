@@ -46,6 +46,7 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { z } from "zod";
 
+import * as calendarSchemas from "../schemas/calendar.js";
 import * as taskSchemas from "../schemas/task.js";
 import * as memorySchemas from "../schemas/memory.js";
 import * as planSchemas from "../schemas/plan.js";
@@ -66,6 +67,7 @@ interface ModuleSpec {
 }
 
 const MODULES: readonly ModuleSpec[] = [
+  { swiftFile: "Calendar", source: "shared/schemas/calendar.ts", schemas: calendarSchemas },
   { swiftFile: "Task", source: "shared/schemas/task.ts", schemas: taskSchemas },
   { swiftFile: "Memory", source: "shared/schemas/memory.ts", schemas: memorySchemas },
   { swiftFile: "Plan", source: "shared/schemas/plan.ts", schemas: planSchemas },

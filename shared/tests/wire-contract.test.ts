@@ -13,6 +13,8 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import {
+  CalendarEvent,
+  Conflict,
   ListItem,
   Memory,
   Plan,
@@ -164,6 +166,32 @@ test("a Swift-encoded TurnRequest validates", () => {
       text: "add milk to the walmart list",
       clientTimestamp: CANONICAL_DATE,
       timezone: "America/Toronto",
+    }).success,
+  );
+});
+
+test("a Swift-encoded CalendarEvent and Conflict validate", () => {
+  const swiftEncodedEvent = {
+    id: "evt-1",
+    title: "Dentist",
+    startsAt: CANONICAL_DATE,
+    endsAt: CANONICAL_DATE,
+    isAllDay: false,
+    location: "Toronto",
+  };
+  assert.ok(CalendarEvent.safeParse(swiftEncodedEvent).success);
+  // isAllDay is defaulted — a payload without it still parses.
+  const { isAllDay, ...withoutAllDay } = swiftEncodedEvent;
+  const parsed = CalendarEvent.safeParse(withoutAllDay);
+  assert.ok(parsed.success);
+  assert.equal(parsed.data?.isAllDay, false);
+
+  assert.ok(
+    Conflict.safeParse({
+      eventA: swiftEncodedEvent,
+      eventB: { ...swiftEncodedEvent, id: "evt-2", location: "Mississauga" },
+      kind: "travel",
+      minutesShort: 10,
     }).success,
   );
 });
