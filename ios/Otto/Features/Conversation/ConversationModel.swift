@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 /// One row in the conversation transcript.
 struct TranscriptEntry: Identifiable {
@@ -63,6 +64,17 @@ final class ConversationModel {
 
     private var pendingDraft: (recipientName: String, body: String)?
     private let contacts = ContactResolver()
+
+    // MARK: - The morning brief
+
+    /// The structured half of the brief, rendered while Otto speaks.
+    private(set) var briefCard: BriefCard?
+    private(set) var briefRunning = false
+    private let calendarService = CalendarService()
+
+    private static let briefEnabledKey = "otto.brief.enabled"
+    private static let briefHourKey = "otto.brief.hour"
+    private static let briefMinuteKey = "otto.brief.minute"
 
     // MARK: - Debug overlay
 
@@ -134,6 +146,49 @@ final class ConversationModel {
             await self.voiceLoop.setBargeThreshold(threshold)
             await self.voiceLoop.setSession(session)
         }
+
+        // Tapping a brief notification runs the brief; re-assert the weekday
+        // schedule so edits to wake time survive reinstalls.
+        reminders.onBriefNotificationTapped = { [weak self] in
+            guard let self else { return }
+            Task { await self.runBrief() }
+        }
+        if UserDefaults.standard.bool(forKey: Self.briefEnabledKey) {
+            let (hour, minute) = storedWakeTime()
+            Task { _ = await self.reminders.scheduleBrief(hour: hour, minute: minute) }
+        }
+    }
+
+    func storedWakeTime() -> (hour: Int, minute: Int) {
+        let defaults = UserDefaults.standard
+        let hour = defaults.object(forKey: Self.briefHourKey) as? Int ?? 7
+        let minute = defaults.object(forKey: Self.briefMinuteKey) as? Int ?? 30
+        return (hour, minute)
+    }
+
+    /// The settings surface calls this; scheduling requests notification
+    /// permission in context on enable.
+    func setBriefSchedule(enabled: Bool, hour: Int, minute: Int) {
+        let defaults = UserDefaults.standard
+        defaults.set(enabled, forKey: Self.briefEnabledKey)
+        defaults.set(hour, forKey: Self.briefHourKey)
+        defaults.set(minute, forKey: Self.briefMinuteKey)
+        Task {
+            if enabled {
+                let scheduled = await self.reminders.scheduleBrief(hour: hour, minute: minute)
+                if !scheduled {
+                    self.appendNotice(
+                        "Notifications are off, so the scheduled brief can't ring. Enable them for Otto in Settings."
+                    )
+                }
+            } else {
+                await self.reminders.cancelBrief()
+            }
+        }
+    }
+
+    var briefScheduleEnabled: Bool {
+        UserDefaults.standard.bool(forKey: Self.briefEnabledKey)
     }
 
     /// Re-reads auth state — called on appear and whenever the settings
@@ -268,6 +323,8 @@ final class ConversationModel {
             pendingDraft = (recipientName, body)
         case .capturedUtterance(let text):
             Task { await self.handleDraftReply(text) }
+        case .briefRequested:
+            Task { await self.runBrief() }
         case .task(let task):
             tasksModel.apply(task)
             Task {
@@ -430,6 +487,58 @@ final class ConversationModel {
         draftStage = .idle
         pendingDraft = nil
         Task { await self.voiceLoop.disarmUtteranceCapture() }
+    }
+
+    // MARK: - Brief flow
+
+    /// Gather the on-device calendar (permission in context), detect
+    /// conflicts in Swift, POST /brief, render the card, speak the brief.
+    func runBrief() async {
+        guard !briefRunning else { return }
+        guard await prepareForTurn() else { return }
+        briefRunning = true
+        defer { briefRunning = false }
+
+        let dayStart = Foundation.Calendar.current.startOfDay(for: Date())
+        let dayEnd =
+            Foundation.Calendar.current.date(byAdding: .day, value: 1, to: dayStart)
+            ?? dayStart.addingTimeInterval(86_400)
+
+        var events: [CalendarEvent] = []
+        do {
+            events = try await calendarService.events(from: dayStart, to: dayEnd)
+        } catch {
+            // Denied or unavailable: the brief still runs without calendar.
+            appendNotice(error.localizedDescription)
+        }
+        let conflicts = CalendarService.conflicts(in: events)
+
+        guard let client = makeClient() else { return }
+        do {
+            let response = try await client.morningBrief(
+                BriefRequest(
+                    events: events,
+                    conflicts: conflicts,
+                    timezone: TimeZone.current.identifier
+                )
+            )
+            withAnimation(.snappy) { briefCard = response.card }
+            await voiceLoop.announce(response.spoken)
+        } catch {
+            appendNotice("Brief failed: \(error.localizedDescription)")
+            await voiceLoop.announce("I couldn't put the brief together. Try again in a minute.")
+        }
+    }
+
+    func dismissBrief() {
+        withAnimation(.snappy) { briefCard = nil }
+    }
+
+    private func makeClient() -> APIClient? {
+        let urlString =
+            UserDefaults.standard.string(forKey: DebugModel.serverURLKey) ?? "http://localhost:8080"
+        guard let url = URL(string: urlString), url.scheme != nil else { return nil }
+        return APIClient(baseURL: url, auth: auth)
     }
 
     private func handleLevel(_ db: Float) {

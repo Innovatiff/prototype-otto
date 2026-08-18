@@ -133,15 +133,48 @@ final class DebugModel {
 struct DebugView: View {
     @Bindable var model: DebugModel
 
+    /// Optional hook the conversation screen provides so the wake-time
+    /// controls can (re)schedule the weekday brief notifications.
+    var onBriefScheduleChange: ((Bool, Int, Int) -> Void)?
+    @State private var briefEnabled = false
+    @State private var wakeTime = Date()
+
     var body: some View {
         NavigationStack {
             Form {
+                briefSection
                 serverSection
                 accountSection
                 converseSection
             }
-            .navigationTitle("Otto Debug")
+            .navigationTitle("Settings")
+            .onAppear {
+                briefEnabled = UserDefaults.standard.bool(forKey: "otto.brief.enabled")
+                var components = DateComponents()
+                components.hour = UserDefaults.standard.object(forKey: "otto.brief.hour") as? Int ?? 7
+                components.minute = UserDefaults.standard.object(forKey: "otto.brief.minute") as? Int ?? 30
+                wakeTime = Calendar.current.date(from: components) ?? Date()
+            }
         }
+    }
+
+    private var briefSection: some View {
+        Section("Morning brief") {
+            Toggle("Weekday brief at wake time", isOn: $briefEnabled)
+                .onChange(of: briefEnabled) { _, _ in
+                    pushBriefSchedule()
+                }
+            DatePicker("Wake time", selection: $wakeTime, displayedComponents: .hourAndMinute)
+                .onChange(of: wakeTime) { _, _ in
+                    pushBriefSchedule()
+                }
+                .disabled(!briefEnabled)
+        }
+    }
+
+    private func pushBriefSchedule() {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: wakeTime)
+        onBriefScheduleChange?(briefEnabled, components.hour ?? 7, components.minute ?? 30)
     }
 
     private var serverSection: some View {

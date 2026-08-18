@@ -24,6 +24,14 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
 
     private let center = UNUserNotificationCenter.current()
 
+    /// Identifier prefix for the weekday morning-brief notifications.
+    static let briefIdentifierPrefix = "otto.brief."
+
+    /// Set by the conversation model: tapping a brief notification runs the
+    /// brief. Survives cold launch because this delegate is installed at
+    /// app start.
+    var onBriefNotificationTapped: (@MainActor () -> Void)?
+
     override init() {
         super.init()
         // Foreground presentation: a reminder firing while Otto is open
@@ -94,6 +102,41 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    // MARK: - The morning brief (weekdays at wake time)
+
+    /// Schedules the weekday brief notifications. Requests notification
+    /// permission in context (the user just enabled the brief). Idempotent:
+    /// identifiers are per-weekday, so re-scheduling replaces.
+    func scheduleBrief(hour: Int, minute: Int) async -> Bool {
+        guard await ensureAuthorization() else {
+            return false
+        }
+        cancelBrief()
+        // Gregorian weekdays: 2 = Monday … 6 = Friday.
+        for weekday in 2...6 {
+            let content = UNMutableNotificationContent()
+            content.title = "Morning brief"
+            content.body = "Tap, and Otto walks you through the day."
+            content.sound = .default
+            var components = DateComponents()
+            components.hour = hour
+            components.minute = minute
+            components.weekday = weekday
+            let request = UNNotificationRequest(
+                identifier: "\(Self.briefIdentifierPrefix)\(weekday)",
+                content: content,
+                trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+            )
+            try? await center.add(request)
+        }
+        return true
+    }
+
+    func cancelBrief() {
+        let ids = (2...6).map { "\(Self.briefIdentifierPrefix)\($0)" }
+        center.removePendingNotificationRequests(withIdentifiers: ids)
+    }
+
     // MARK: - UNUserNotificationCenterDelegate
 
     nonisolated func userNotificationCenter(
@@ -101,5 +144,16 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         [.banner, .sound]
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let id = response.notification.request.identifier
+        guard id.hasPrefix(Self.briefIdentifierPrefix) else { return }
+        await MainActor.run {
+            self.onBriefNotificationTapped?()
+        }
     }
 }

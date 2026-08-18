@@ -38,7 +38,9 @@ struct ConversationView: View {
             HubView(tasks: tasks, memory: memory)
         }
         .sheet(isPresented: $showingSettings) {
-            DebugView(model: settings)
+            DebugView(model: settings, onBriefScheduleChange: { enabled, hour, minute in
+                model.setBriefSchedule(enabled: enabled, hour: hour, minute: minute)
+            })
         }
         .sheet(item: $model.composeRequest) { request in
             MessageComposeView(request: request) {
@@ -78,13 +80,22 @@ struct ConversationView: View {
             EclipseOrb(
                 state: model.state,
                 level: model.micBars.last ?? 0,
-                size: 320
+                size: model.briefCard == nil ? 320 : 150
             )
 
             Spacer(minLength: 16)
 
-            dialogue
-                .frame(maxHeight: 170)
+            if let card = model.briefCard {
+                BriefCardView(card: card) {
+                    model.dismissBrief()
+                }
+                .padding(.horizontal, 16)
+                .frame(maxHeight: 400)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                dialogue
+                    .frame(maxHeight: 170)
+            }
 
             Spacer(minLength: 8)
         }

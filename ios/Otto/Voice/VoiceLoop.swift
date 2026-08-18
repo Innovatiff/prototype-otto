@@ -56,6 +56,9 @@ enum ConversationEvent: Sendable {
     /// A final utterance claimed by an armed capture (draft confirmations)
     /// instead of becoming a server turn.
     case capturedUtterance(String)
+    /// The utterance asked for the morning brief — the model runs the brief
+    /// flow (calendar + POST /brief) instead of a server turn.
+    case briefRequested
     /// The server's effective conversation session for the last turn — the
     /// model persists it so a relaunch resumes the same conversation.
     case session(String)
@@ -451,6 +454,14 @@ actor VoiceLoop {
                 // Claimed by the draft flow — no server turn; keep listening.
                 captureNextFinalUtterance = false
                 emit(.capturedUtterance(transcript))
+                Task {
+                    await self.startListening()
+                }
+                return
+            }
+            if BriefTriggers.matches(transcript) {
+                // The brief needs the on-device calendar — never a server turn.
+                emit(.briefRequested)
                 Task {
                     await self.startListening()
                 }
