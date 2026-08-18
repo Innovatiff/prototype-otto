@@ -25,7 +25,8 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
 
     /// Identifier prefix for the weekday morning-brief notifications.
-    static let briefIdentifierPrefix = "otto.brief."
+    /// nonisolated: read from the nonisolated notification delegate too.
+    nonisolated static let briefIdentifierPrefix = "otto.brief."
 
     /// Set by the conversation model: tapping a brief notification runs the
     /// brief. Survives cold launch because this delegate is installed at
