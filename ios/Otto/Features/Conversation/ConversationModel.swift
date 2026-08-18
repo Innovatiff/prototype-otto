@@ -148,6 +148,9 @@ final class ConversationModel {
 
     private let auth: any AuthProvider
     private let voiceLoop: VoiceLoop
+    /// The guided-session runtime — headless until Step 9's screen renders
+    /// it. Guidance utterances route here for on-device classification.
+    let guidance: GuidanceRuntime
     /// Created with the model at app start so its notification delegate is
     /// installed before any reminder can fire in the foreground.
     private let reminders = ReminderScheduler()
@@ -165,7 +168,9 @@ final class ConversationModel {
         self.auth = auth
         self.tasksModel = tasksModel
         self.plansModel = plansModel
-        self.voiceLoop = VoiceLoop(auth: auth)
+        let voiceLoop = VoiceLoop(auth: auth)
+        self.voiceLoop = voiceLoop
+        self.guidance = GuidanceRuntime(voiceLoop: voiceLoop)
         self.bargeThresholdDb =
             (UserDefaults.standard.object(forKey: Self.bargeThresholdKey) as? Float) ?? -30
         self.sessionId = UserDefaults.standard.string(forKey: Self.sessionKey)
@@ -396,6 +401,8 @@ final class ConversationModel {
             Task { await self.handleCapturedReply(text) }
         case .briefRequested:
             Task { await self.runBrief() }
+        case .guidanceUtterance(let text):
+            Task { await self.guidance.handleUtterance(text) }
         case .planProgress(let stage):
             withAnimation(.snappy) {
                 planPhase = stage == .designing ? .designing : .scheduling

@@ -445,6 +445,12 @@ final class Transcriber {
         "cancel", "done", "right", "correct", "thanks", "thank you",
         "go ahead", "send it", "never mind", "morning", "good morning",
         "hello", "hey otto",
+        // Guidance commands ride the 350ms fast path — a "done" between
+        // sets must land like a button press, not a sentence.
+        "next", "skip", "pause", "resume", "continue", "back", "repeat",
+        "finished", "again", "pass", "quit", "wait", "hold on", "hang on",
+        "keep going", "go on", "i'm done", "im done", "i'm finished",
+        "next step", "go back", "time left", "how much longer",
     ]
 
     /// Heuristic for "parses as a complete utterance": terminal punctuation

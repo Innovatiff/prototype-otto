@@ -68,6 +68,10 @@ enum ConversationEvent: Sendable {
     /// The utterance asked for the morning brief — the model runs the brief
     /// flow (calendar + POST /brief) instead of a server turn.
     case briefRequested
+    /// A final utterance heard while guidance listening is active. Never a
+    /// server turn from here: the guidance runtime classifies it on device
+    /// (commands respond instantly) and only off-script questions escalate.
+    case guidanceUtterance(String)
     /// Plan generation progress — drives the on-screen state text
     /// ("Designing your week…"), never a spinner.
     case planProgress(PlanProgressStage)
@@ -203,6 +207,9 @@ actor VoiceLoop {
     private var conversationActive = false
     private var resumeAfterInterruption = false
     private var captureNextFinalUtterance = false
+    /// Guided-session listening: every final utterance emits as
+    /// .guidanceUtterance and listening restarts — never a server turn.
+    private var guidanceModeActive = false
     private var turnGeneration = 0
     private var timings = TurnTimings()
     private var lastMicLevelDb: Float = -120
@@ -294,9 +301,48 @@ actor VoiceLoop {
         if let speaker {
             try? await speaker.speak(stream)
         }
-        if conversationActive {
+        if conversationActive || guidanceModeActive {
             await startListening()
         } else {
+            setState(.idle)
+        }
+    }
+
+    /// Guidance listening: the mic stays hot for the whole session, and
+    /// EVERY final utterance is emitted as .guidanceUtterance — nothing
+    /// becomes a server turn from the loop itself. First run installs the
+    /// on-device model exactly like a conversation start.
+    func startGuidanceListening() async {
+        guidanceModeActive = true
+        guard await AudioSessionController.requestMicrophonePermission() else {
+            emit(.notice("Microphone access is required for guided sessions."))
+            guidanceModeActive = false
+            return
+        }
+        do {
+            let components = try await ensureComponents()
+            try await components.session.start()
+            if locale == nil {
+                emit(.notice("Preparing on-device transcription…"))
+                locale = try await Transcriber.ensureModelInstalled()
+            }
+        } catch {
+            emit(.notice("Voice unavailable: \(error.localizedDescription)"))
+            guidanceModeActive = false
+            return
+        }
+        await startListening()
+    }
+
+    /// Ends guidance listening. If no conversation is active either, the
+    /// transcriber stops and the loop goes idle (the audio session itself is
+    /// governed by the guidance hold, not by this).
+    func stopGuidanceListening() async {
+        guidanceModeActive = false
+        if !conversationActive {
+            if let transcriber {
+                await transcriber.cancel()
+            }
             setState(.idle)
         }
     }
@@ -491,7 +537,7 @@ actor VoiceLoop {
     // MARK: - Listening
 
     private func startListening() async {
-        guard conversationActive, let transcriber, let locale else {
+        guard conversationActive || guidanceModeActive, let transcriber, let locale else {
             setState(.idle)
             return
         }
@@ -511,6 +557,16 @@ actor VoiceLoop {
         case .endpoint(let transcript, let speechEndedAt):
             guard state == .listening else { return }
             emit(.userFinal(transcript))
+            if guidanceModeActive {
+                // The guidance runtime owns every utterance while a session
+                // runs — commands classify on device, questions escalate
+                // from there (Step 6). Keep listening either way.
+                emit(.guidanceUtterance(transcript))
+                Task {
+                    await self.startListening()
+                }
+                return
+            }
             if captureNextFinalUtterance {
                 // Claimed by the draft flow — no server turn; keep listening.
                 captureNextFinalUtterance = false
