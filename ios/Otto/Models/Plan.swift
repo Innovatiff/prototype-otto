@@ -120,25 +120,71 @@ struct PlanMeta: Codable, Hashable, Sendable {
     }
 }
 
+struct Progression: Codable, Hashable, Sendable {
+    var loadMultiplier: Double?
+    var repsDelta: Int?
+    var setsDelta: Int?
+    var note: String?
+
+    init(
+        loadMultiplier: Double? = nil,
+        repsDelta: Int? = nil,
+        setsDelta: Int? = nil,
+        note: String? = nil
+    ) {
+        self.loadMultiplier = loadMultiplier
+        self.repsDelta = repsDelta
+        self.setsDelta = setsDelta
+        self.note = note
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case loadMultiplier
+        case repsDelta
+        case setsDelta
+        case note
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.loadMultiplier = try container.decodeIfPresent(Double.self, forKey: .loadMultiplier)
+        self.repsDelta = try container.decodeIfPresent(Int.self, forKey: .repsDelta)
+        self.setsDelta = try container.decodeIfPresent(Int.self, forKey: .setsDelta)
+        self.note = try container.decodeIfPresent(String.self, forKey: .note)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(self.loadMultiplier, forKey: .loadMultiplier)
+        try container.encodeIfPresent(self.repsDelta, forKey: .repsDelta)
+        try container.encodeIfPresent(self.setsDelta, forKey: .setsDelta)
+        try container.encodeIfPresent(self.note, forKey: .note)
+    }
+}
+
 struct ScheduledSession: Codable, Hashable, Sendable {
     var sessionId: String
     var dayOffset: Int
     var timeOfDay: String?
+    var progression: Progression?
 
     init(
         sessionId: String,
         dayOffset: Int,
-        timeOfDay: String? = nil
+        timeOfDay: String? = nil,
+        progression: Progression? = nil
     ) {
         self.sessionId = sessionId
         self.dayOffset = dayOffset
         self.timeOfDay = timeOfDay
+        self.progression = progression
     }
 
     private enum CodingKeys: String, CodingKey {
         case sessionId
         case dayOffset
         case timeOfDay
+        case progression
     }
 
     init(from decoder: any Decoder) throws {
@@ -146,6 +192,7 @@ struct ScheduledSession: Codable, Hashable, Sendable {
         self.sessionId = try container.decode(String.self, forKey: .sessionId)
         self.dayOffset = try container.decode(Int.self, forKey: .dayOffset)
         self.timeOfDay = try container.decodeIfPresent(String.self, forKey: .timeOfDay)
+        self.progression = try container.decodeIfPresent(Progression.self, forKey: .progression)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -153,6 +200,7 @@ struct ScheduledSession: Codable, Hashable, Sendable {
         try container.encode(self.sessionId, forKey: .sessionId)
         try container.encode(self.dayOffset, forKey: .dayOffset)
         try container.encodeIfPresent(self.timeOfDay, forKey: .timeOfDay)
+        try container.encodeIfPresent(self.progression, forKey: .progression)
     }
 }
 

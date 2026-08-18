@@ -47,12 +47,35 @@ export const Session = z.object({
 });
 export type Session = z.infer<typeof Session>;
 
+/**
+ * Overrides a schedule entry applies to its session template.
+ *
+ * The core generation rule depends on this: an 8-week program is 4-6
+ * DISTINCT session templates in sessions[], referenced from schedule[] with
+ * progression overrides — never 32 expanded sessions. This is how real
+ * programs are written, it keeps generation to one reasonable call, and it
+ * makes adaptation cheap.
+ */
+export const Progression = z.object({
+  /** Multiplies every step load in the template; 1.0 = as written. */
+  loadMultiplier: z.number().positive().optional(),
+  /** Added to every counted step's reps. */
+  repsDelta: z.number().int().optional(),
+  /** Added to every counted step's sets. */
+  setsDelta: z.number().int().optional(),
+  /** e.g. "deload week — keep it light". */
+  note: z.string().optional(),
+});
+export type Progression = z.infer<typeof Progression>;
+
 /** Places a session on the calendar relative to plan start. */
 export const ScheduledSession = z.object({
   sessionId: zId,
   dayOffset: z.number().int(),
   /** Local wall-clock time, e.g. "08:00". */
   timeOfDay: z.string().optional(),
+  /** Overrides applied to the referenced template for this occurrence. */
+  progression: Progression.optional(),
 });
 export type ScheduledSession = z.infer<typeof ScheduledSession>;
 
