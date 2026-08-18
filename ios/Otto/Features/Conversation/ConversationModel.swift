@@ -154,14 +154,17 @@ final class ConversationModel {
     /// The task screen's state — task events upsert into it live so
     /// voice-added items animate in while the screen is open.
     private let tasksModel: TasksModel
+    /// The plans pane's state — plan_ready events upsert into it live.
+    private let plansModel: PlansModel
     private var activated = false
     private var ottoTurnOpen = false
     private var eventTask: Task<Void, Never>?
     private var levelTask: Task<Void, Never>?
 
-    init(auth: any AuthProvider, tasksModel: TasksModel) {
+    init(auth: any AuthProvider, tasksModel: TasksModel, plansModel: PlansModel) {
         self.auth = auth
         self.tasksModel = tasksModel
+        self.plansModel = plansModel
         self.voiceLoop = VoiceLoop(auth: auth)
         self.bargeThresholdDb =
             (UserDefaults.standard.object(forKey: Self.bargeThresholdKey) as? Float) ?? -30
@@ -294,6 +297,14 @@ final class ConversationModel {
         appendNotice("Draft discarded.")
     }
 
+    /// The hub's "Adapt this plan" entry: adaptation is conversational, so
+    /// just open the mic — ACTIVE PLANS context and the adapt_plan tool do
+    /// the rest when the user says what changed.
+    func beginPlanAdaptation() {
+        guard state == .idle else { return }
+        toggleVoice()
+    }
+
     func toggleOverlay() {
         overlayVisible.toggle()
         if overlayVisible {
@@ -392,6 +403,7 @@ final class ConversationModel {
         case .planReady(let plan):
             planPhase = .idle
             withAnimation(.snappy) { planCard = plan }
+            plansModel.apply(plan)
             // Offer calendar scheduling for NEW plans only — an adapted
             // version may already be scheduled (its links carried over).
             if plan.meta.version == 1 {

@@ -13,6 +13,7 @@ struct OttoApp: App {
     @State private var settings: DebugModel
     @State private var memory: MemoryModel
     @State private var tasks: TasksModel
+    @State private var plans: PlansModel
 
     init() {
         FirebaseApp.configure()
@@ -22,15 +23,25 @@ struct OttoApp: App {
         // so sign-in state is shared.
         let auth = EmailPasswordAuth()
         let tasksModel = TasksModel(auth: auth)
+        let plansModel = PlansModel(auth: auth)
         _settings = State(initialValue: DebugModel(auth: auth))
         _tasks = State(initialValue: tasksModel)
-        _conversation = State(initialValue: ConversationModel(auth: auth, tasksModel: tasksModel))
+        _plans = State(initialValue: plansModel)
+        _conversation = State(
+            initialValue: ConversationModel(auth: auth, tasksModel: tasksModel, plansModel: plansModel)
+        )
         _memory = State(initialValue: MemoryModel(auth: auth))
     }
 
     var body: some Scene {
         WindowGroup {
-            ConversationView(model: conversation, settings: settings, memory: memory, tasks: tasks)
+            ConversationView(
+                model: conversation,
+                settings: settings,
+                memory: memory,
+                tasks: tasks,
+                plans: plans
+            )
                 // Otto's stage is dark-first and monochrome; sheets inherit.
                 .preferredColorScheme(.dark)
                 .tint(.white)

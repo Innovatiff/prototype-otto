@@ -10,6 +10,7 @@ struct ConversationView: View {
     @Bindable var settings: DebugModel
     @Bindable var memory: MemoryModel
     @Bindable var tasks: TasksModel
+    @Bindable var plans: PlansModel
     @State private var showingSettings = false
     @State private var showingHub = false
 
@@ -37,7 +38,12 @@ struct ConversationView: View {
             }
         )
         .sheet(isPresented: $showingHub) {
-            HubView(tasks: tasks, memory: memory)
+            HubView(tasks: tasks, memory: memory, plans: plans) {
+                // Adaptation is spoken: close the hub, open the mic, and the
+                // user says what changed.
+                showingHub = false
+                model.beginPlanAdaptation()
+            }
         }
         .sheet(isPresented: $showingSettings) {
             DebugView(model: settings, onBriefScheduleChange: { enabled, hour, minute in

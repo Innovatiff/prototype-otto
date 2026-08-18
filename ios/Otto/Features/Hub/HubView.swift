@@ -14,6 +14,10 @@ struct HubView: View {
 
     @Bindable var tasks: TasksModel
     @Bindable var memory: MemoryModel
+    @Bindable var plans: PlansModel
+    /// "Adapt this plan": dismisses the hub and opens the mic — the change
+    /// is spoken, and the conversation carries the adapt_plan tool.
+    let onAdaptPlan: () -> Void
 
     @State private var pane: Pane = .tasks
 
@@ -132,11 +136,7 @@ struct HubView: View {
                 caption: "Runs Otto performs on his own land here — arriving with a later phase."
             )
         case .plans:
-            comingSoon(
-                icon: "calendar.badge.clock",
-                title: "Plans",
-                caption: "Multi-week plans and their sessions land here — arriving with the planning phase."
-            )
+            PlansView(model: plans, onAdaptPlan: onAdaptPlan)
         }
     }
 

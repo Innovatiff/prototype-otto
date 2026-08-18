@@ -5,7 +5,7 @@ import { PlanCalendarEventsRequest, type Plan, type Step } from "@otto/shared";
 
 import { applyPatch } from "../src/plans/adapt.js";
 import { meterMonthKey, nextMeterValue } from "../src/plans/store.js";
-import { invalidCalendarLinks } from "../src/routes/plans.js";
+import { invalidCalendarLinks, summarizePlanDoc } from "../src/routes/plans.js";
 
 const NOW = new Date("2026-08-18T12:00:00.000Z");
 
@@ -100,6 +100,24 @@ test("a patch carries links for untouched entries and drops removed/shifted ones
       { sessionId: "upper-a", dayOffset: 2, eventId: "ev-2" },
     ]);
   }
+});
+
+// ── List summaries: the body stays behind ───────────────────────────
+
+test("summaries carry counts and lifecycle, never sessions or schedule", () => {
+  const summary = summarizePlanDoc(linkedPlan());
+  assert.deepEqual(summary, {
+    id: "plan-1",
+    meta: { domain: "fitness", goal: "get stronger", horizonDays: 28, version: 1 },
+    status: "active",
+    sessionCount: 2,
+    scheduleEntryCount: 4,
+    createdAt: "2026-08-04T12:00:00.000Z",
+  });
+  assert.ok(!("sessions" in summary));
+  assert.ok(!("supersedes" in summary));
+  const versioned = summarizePlanDoc({ ...linkedPlan(), supersedes: "plan-0" });
+  assert.equal(versioned.supersedes, "plan-0");
 });
 
 // ── Plan metering (count only; no enforcement) ──────────────────────

@@ -130,3 +130,25 @@ export const PlanCalendarEventsRequest = z.object({
   events: z.array(PlanCalendarEvent).min(1).max(200),
 });
 export type PlanCalendarEventsRequest = z.infer<typeof PlanCalendarEventsRequest>;
+
+/**
+ * A plan without its body — what GET /plans lists. Full sessions and
+ * schedule come from GET /plans/:id; summaries keep the list light and are
+ * all the version-history UI needs.
+ */
+export const PlanSummary = z.object({
+  id: zId,
+  meta: PlanMeta,
+  status: PlanStatus,
+  supersedes: zId.optional(),
+  sessionCount: z.number().int().min(0),
+  scheduleEntryCount: z.number().int().min(0),
+  createdAt: isoDateTime,
+});
+export type PlanSummary = z.infer<typeof PlanSummary>;
+
+/** GET /plans response. */
+export const PlanListResponse = z.object({
+  plans: z.array(PlanSummary),
+});
+export type PlanListResponse = z.infer<typeof PlanListResponse>;

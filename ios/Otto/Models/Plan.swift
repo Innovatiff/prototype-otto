@@ -150,6 +150,30 @@ struct PlanCalendarEventsRequest: Codable, Hashable, Sendable {
     }
 }
 
+struct PlanListResponse: Codable, Hashable, Sendable {
+    var plans: [PlanSummary]
+
+    init(
+        plans: [PlanSummary]
+    ) {
+        self.plans = plans
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case plans
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.plans = try container.decode([PlanSummary].self, forKey: .plans)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.plans, forKey: .plans)
+    }
+}
+
 struct PlanMeta: Codable, Hashable, Sendable {
     var domain: String
     var goal: String
@@ -195,6 +219,66 @@ struct PlanMeta: Codable, Hashable, Sendable {
 enum PlanStatus: String, Codable, Hashable, Sendable, CaseIterable {
     case active
     case superseded
+}
+
+struct PlanSummary: Codable, Hashable, Sendable, Identifiable {
+    var id: String
+    var meta: PlanMeta
+    var status: PlanStatus
+    var supersedes: String?
+    var sessionCount: Int
+    var scheduleEntryCount: Int
+    var createdAt: Date
+
+    init(
+        id: String,
+        meta: PlanMeta,
+        status: PlanStatus,
+        supersedes: String? = nil,
+        sessionCount: Int,
+        scheduleEntryCount: Int,
+        createdAt: Date
+    ) {
+        self.id = id
+        self.meta = meta
+        self.status = status
+        self.supersedes = supersedes
+        self.sessionCount = sessionCount
+        self.scheduleEntryCount = scheduleEntryCount
+        self.createdAt = createdAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case meta
+        case status
+        case supersedes
+        case sessionCount
+        case scheduleEntryCount
+        case createdAt
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.meta = try container.decode(PlanMeta.self, forKey: .meta)
+        self.status = try container.decode(PlanStatus.self, forKey: .status)
+        self.supersedes = try container.decodeIfPresent(String.self, forKey: .supersedes)
+        self.sessionCount = try container.decode(Int.self, forKey: .sessionCount)
+        self.scheduleEntryCount = try container.decode(Int.self, forKey: .scheduleEntryCount)
+        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.meta, forKey: .meta)
+        try container.encode(self.status, forKey: .status)
+        try container.encodeIfPresent(self.supersedes, forKey: .supersedes)
+        try container.encode(self.sessionCount, forKey: .sessionCount)
+        try container.encode(self.scheduleEntryCount, forKey: .scheduleEntryCount)
+        try container.encode(self.createdAt, forKey: .createdAt)
+    }
 }
 
 struct Progression: Codable, Hashable, Sendable {
