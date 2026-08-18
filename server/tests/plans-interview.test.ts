@@ -30,7 +30,7 @@ test("a template-style plan (few sessions, many schedule entries) validates", ()
     target: { sets: 3, reps: 8, load: 20 },
     completion: "manual",
   };
-  const plan = Plan.safeParse({
+  const document = {
     id: "p1",
     ownerId: "u1",
     meta: { domain: "fitness", goal: "strength", horizonDays: 56, version: 1 },
@@ -41,9 +41,12 @@ test("a template-style plan (few sessions, many schedule entries) validates", ()
       dayOffset: i,
       progression: { loadMultiplier: 1 + 0.025 * Math.floor(i / 4) },
     })),
+    status: "active",
     createdAt: "2026-08-18T12:00:00.000Z",
-  });
-  assert.ok(plan.success);
+  };
+  assert.ok(Plan.safeParse(document).success);
+  // Lifecycle is part of the contract: a plan without a status is invalid.
+  assert.ok(!Plan.safeParse({ ...document, status: undefined }).success);
 });
 
 // ── Step 1: the interview contract ──────────────────────────────────

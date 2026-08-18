@@ -34,6 +34,7 @@ test("the static prefix is byte-identical across turns with different dynamic st
     addressAllowed: true,
     events: [],
     weather: null,
+    plans: [],
   });
   const b = buildSystemPrompt(user("Boss"), [memory("no pork")], [], {
     now: new Date("2026-08-01T09:00:00.000Z"),
@@ -41,6 +42,7 @@ test("the static prefix is byte-identical across turns with different dynamic st
     addressAllowed: false,
     events: [],
     weather: null,
+    plans: [],
   });
   assert.equal(a.staticPrefix, b.staticPrefix);
 });
@@ -138,6 +140,7 @@ test("the dynamic part carries clock, gate ruling, memories, and tasks", () => {
     addressAllowed: true,
     events: [],
     weather: null,
+    plans: [],
   });
   assert.ok(parts.dynamic.includes("(America/Toronto)"));
   assert.ok(parts.dynamic.includes("July 31, 2026"));
@@ -153,6 +156,7 @@ test("the gate ruling flips to a prohibition when disallowed", () => {
     addressAllowed: false,
     events: [],
     weather: null,
+    plans: [],
   });
   assert.ok(parts.dynamic.includes("Do not use any term of address this turn."));
 });
@@ -164,6 +168,7 @@ test("an invalid timezone falls back to UTC instead of throwing", () => {
     addressAllowed: true,
     events: [],
     weather: null,
+    plans: [],
   });
   assert.ok(parts.dynamic.includes("(UTC)"));
 });
@@ -256,6 +261,7 @@ test("the dynamic part carries the schedule and weather sections", () => {
       weatherCode: 1,
       advice: [],
     },
+    plans: [],
   });
   assert.ok(parts.dynamic.includes("SCHEDULE (from the device calendar"));
   assert.ok(parts.dynamic.includes("Dentist"));

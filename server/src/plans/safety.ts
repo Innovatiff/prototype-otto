@@ -215,6 +215,14 @@ function checkEquipment(
 export function checkPlanSafety(
   payload: GeneratedPlanPayload,
   constraints: PlanConstraints,
+  options: {
+    /**
+     * Adaptation patches set this: reshaping a partially-lived schedule
+     * (missed days in the deload week) must not fail the deload rule, which
+     * is a rule about how plans are WRITTEN, not how they are repaired.
+     */
+    skipDeloadCheck?: boolean;
+  } = {},
 ): SafetyViolation[] {
   const violations: SafetyViolation[] = [];
   if (payload.meta.domain !== constraints.domain) {
@@ -227,7 +235,7 @@ export function checkPlanSafety(
   }
   if (constraints.domain === "fitness") {
     violations.push(
-      ...checkDeload(payload),
+      ...(options.skipDeloadCheck === true ? [] : checkDeload(payload)),
       ...checkProgression(payload),
       ...checkSessionTime(payload, constraints),
       ...checkEquipment(payload, constraints),

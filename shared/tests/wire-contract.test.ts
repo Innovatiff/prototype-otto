@@ -154,6 +154,7 @@ test("Plan.constraints accepts every JSONValue case the Swift enum can encode", 
         ],
       },
     ],
+    status: "active",
     createdAt: CANONICAL_DATE,
   });
   assert.ok(parsed.success, JSON.stringify(parsed.success ? {} : parsed.error.issues));

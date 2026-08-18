@@ -88,6 +88,14 @@ export const PlanMeta = z.object({
 });
 export type PlanMeta = z.infer<typeof PlanMeta>;
 
+/**
+ * Lifecycle. Plans are IMMUTABLE once created: a change produces a new plan
+ * document with `supersedes` pointing at this one and meta.version + 1; the
+ * old one flips to "superseded". At most one active plan per domain.
+ */
+export const PlanStatus = z.enum(["active", "superseded"]);
+export type PlanStatus = z.infer<typeof PlanStatus>;
+
 /** A structured, multi-week program Otto generates and guides the user through. */
 export const Plan = z.object({
   id: zId,
@@ -96,6 +104,7 @@ export const Plan = z.object({
   constraints: z.record(z.string(), z.unknown()),
   schedule: z.array(ScheduledSession),
   sessions: z.array(Session),
+  status: PlanStatus,
   supersedes: zId.optional(),
   createdAt: isoDateTime,
 });

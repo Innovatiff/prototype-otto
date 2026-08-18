@@ -19,12 +19,14 @@ import type {
   ConversationMessage,
   CurrentWeather,
   Memory,
+  Plan,
   Task,
   UserProfile,
 } from "@otto/shared";
 
 import { INTERVIEW_GUIDANCE } from "../plans/interview.js";
 import { SAFETY_GUIDANCE } from "../plans/safety.js";
+import { planWeek } from "../plans/store.js";
 import { estimateTokens } from "../router/selectModel.js";
 import { wallDate, wallTime } from "../util/time.js";
 
@@ -102,6 +104,8 @@ export interface PersonaContext {
   events: CalendarEvent[];
   /** Cached current conditions; null when unavailable. */
   weather: CurrentWeather | null;
+  /** The user's active plans (one per domain at most). */
+  plans: Plan[];
 }
 
 export interface SystemPromptParts {
@@ -246,6 +250,24 @@ export function formatTasks(tasks: Task[]): string {
 }
 
 /**
+ * The ACTIVE PLANS block: one line per active plan so the model knows a
+ * plan exists (adapt_plan needs one) and where the user is in it. "(none)"
+ * matters — it tells the model adapt_plan has nothing to patch.
+ */
+export function formatPlans(plans: Plan[], now: Date): string {
+  if (plans.length === 0) {
+    return "(none)";
+  }
+  return plans
+    .slice(0, 4)
+    .map((plan) => {
+      const weeks = Math.max(1, Math.ceil(plan.meta.horizonDays / 7));
+      return `- ${plan.meta.domain}: "${plan.meta.goal}" — week ${planWeek(plan, now)} of ${weeks}`;
+    })
+    .join("\n");
+}
+
+/**
  * Assembles both parts. The static part depends only on the user's address
  * term; everything with a clock or a database read goes in dynamic.
  */
@@ -290,6 +312,9 @@ export function buildSystemPrompt(
     "",
     "ACTIVE TASKS",
     formatTasks(tasks),
+    "",
+    "ACTIVE PLANS",
+    formatPlans(context.plans, context.now),
   ].join("\n");
 
   return { staticPrefix: buildStaticPrefix(user.addressTerm), dynamic };

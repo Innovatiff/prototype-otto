@@ -227,6 +227,30 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
     },
   },
   {
+    name: "adapt_plan",
+    description:
+      "Patch the user's ACTIVE plan when life changed — an injury, missed " +
+      "days, new availability. A diff, never a regeneration: everything not " +
+      "affected stands, and the plan keeps its history as a new version. " +
+      "Use only when your context lists an active plan in that domain, and " +
+      "pass what changed in the user's own words. Afterwards confirm in ONE " +
+      "sentence — 'Swapped overhead pressing out for two weeks. Everything " +
+      "else stands.' — never re-describe the whole plan.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", enum: ["fitness", "productivity", "learning"] },
+        change: {
+          type: "string",
+          description:
+            "What changed, in the user's words, e.g. 'left shoulder is " +
+            "bothering them' or 'missed Tuesday and Wednesday'.",
+        },
+      },
+      required: ["domain", "change"],
+    },
+  },
+  {
     name: "draft_message",
     description:
       "Produce a message draft for the user to send. Returns the draft only " +

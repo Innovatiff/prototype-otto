@@ -19,6 +19,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
     var constraints: [String: JSONValue]
     var schedule: [ScheduledSession]
     var sessions: [Session]
+    var status: PlanStatus
     var supersedes: String?
     var createdAt: Date
 
@@ -29,6 +30,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         constraints: [String: JSONValue],
         schedule: [ScheduledSession],
         sessions: [Session],
+        status: PlanStatus,
         supersedes: String? = nil,
         createdAt: Date
     ) {
@@ -38,6 +40,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         self.constraints = constraints
         self.schedule = schedule
         self.sessions = sessions
+        self.status = status
         self.supersedes = supersedes
         self.createdAt = createdAt
     }
@@ -49,6 +52,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         case constraints
         case schedule
         case sessions
+        case status
         case supersedes
         case createdAt
     }
@@ -61,6 +65,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         self.constraints = try container.decode([String: JSONValue].self, forKey: .constraints)
         self.schedule = try container.decode([ScheduledSession].self, forKey: .schedule)
         self.sessions = try container.decode([Session].self, forKey: .sessions)
+        self.status = try container.decode(PlanStatus.self, forKey: .status)
         self.supersedes = try container.decodeIfPresent(String.self, forKey: .supersedes)
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
     }
@@ -73,6 +78,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         try container.encode(self.constraints, forKey: .constraints)
         try container.encode(self.schedule, forKey: .schedule)
         try container.encode(self.sessions, forKey: .sessions)
+        try container.encode(self.status, forKey: .status)
         try container.encodeIfPresent(self.supersedes, forKey: .supersedes)
         try container.encode(self.createdAt, forKey: .createdAt)
     }
@@ -118,6 +124,11 @@ struct PlanMeta: Codable, Hashable, Sendable {
         try container.encode(self.horizonDays, forKey: .horizonDays)
         try container.encode(self.version, forKey: .version)
     }
+}
+
+enum PlanStatus: String, Codable, Hashable, Sendable, CaseIterable {
+    case active
+    case superseded
 }
 
 struct Progression: Codable, Hashable, Sendable {

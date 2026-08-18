@@ -17,6 +17,7 @@ import { extractMemories } from "../memory/extract.js";
 import { retrieveMemories } from "../memory/retrieve.js";
 import { requireUid } from "../middleware/auth.js";
 import { addressTermAllowed, buildSystemPrompt } from "../persona/system.js";
+import { loadActivePlans } from "../plans/store.js";
 import { classify } from "../router/classify.js";
 import { estimateTokens, route, TIER_MODELS, type RouteInput } from "../router/selectModel.js";
 import { cachedCurrentWeather } from "../services/weather/index.js";
@@ -85,7 +86,7 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
   // loaded in parallel (retrieval includes an embedding round trip). Loading
   // before routing lets contextTokens reflect the real payload size.
   const now = new Date();
-  const [session, user, memories, activeTasks, weather] = await Promise.all([
+  const [session, user, memories, activeTasks, weather, activePlans] = await Promise.all([
     loadOrCreateSession(uid, turn.sessionId, now),
     loadUserProfile(uid, now),
     retrieveMemories(uid, text, now),
@@ -96,6 +97,12 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     // 10-minute cache; never throws. Weather in the dynamic block answers
     // "what's the weather like?" with no tool call.
     cachedCurrentWeather(),
+    // The ACTIVE PLANS block — the model must know a plan exists before it
+    // can adapt it ("my shoulder hurts" patches, never regenerates).
+    loadActivePlans(uid).catch((err: unknown) => {
+      logError("active_plans_load_failed", { userId: uid, ...errorFields(err) });
+      return [];
+    }),
   ]);
   const messages: LlmMessage[] = [
     ...session.messages.map((m): LlmMessage => ({ role: m.role, content: m.content })),
@@ -109,6 +116,7 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     addressAllowed: addressTermAllowed(user.addressTerm, session.messages),
     events: turn.events ?? [],
     weather,
+    plans: activePlans,
   });
 
   const intent = classify(text);

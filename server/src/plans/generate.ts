@@ -16,13 +16,13 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { Plan, Session, ScheduledSession } from "@otto/shared";
 import { z } from "zod";
 
-import { COLLECTIONS, db } from "../firestore.js";
 import { getAnthropicClient } from "../llm/anthropic.js";
 import { logInfo, logWarning } from "../log.js";
 import { TIER_MODELS } from "../router/selectModel.js";
 import { recordCostEvent } from "../telemetry/cost.js";
 import { domainGuidance } from "./domains/index.js";
 import { PlanDomain, type PlanConstraints } from "./interview.js";
+import { mintPlanId } from "./store.js";
 import {
   checkPlanSafety,
   constraintsRiskText,
@@ -124,7 +124,7 @@ export function validateGeneratedPlan(raw: unknown): ValidationResult {
 
 // ── The tool schema (mirrors the zod shapes) ────────────────────────
 
-const STEP_SCHEMA = {
+export const STEP_SCHEMA = {
   type: "object",
   properties: {
     id: { type: "string", description: "Unique within the session, e.g. 'warmup-1'." },
@@ -380,14 +380,14 @@ export async function generatePlan(input: {
         )
       : result.errors;
     if (result.ok && errors.length === 0) {
-      const ref = db().collection(COLLECTIONS.plans).doc();
       const plan = Plan.parse({
-        id: ref.id,
+        id: mintPlanId(),
         ownerId: input.userId,
         meta: { ...result.payload.meta, version: 1 },
         constraints: input.constraints,
         sessions: result.payload.sessions,
         schedule: result.payload.schedule,
+        status: "active",
         createdAt: input.now.toISOString(),
       });
       logInfo("plan_generated", {

@@ -30,6 +30,7 @@ test("exactly the specified tools, snake_case, unique", () => {
     "propose_calendar_event",
     "propose_calendar_move",
     "generate_plan",
+    "adapt_plan",
     "draft_message",
   ]);
   assert.equal(new Set(names).size, names.length);
@@ -79,6 +80,15 @@ test("the spec's product rules are stated where the model reads them", () => {
   assert.match(tool("generate_plan").description ?? "", /NEVER read the plan/);
   assert.match(tool("generate_plan").description ?? "", /never promise a body outcome/i);
   assert.deepEqual(properties("generate_plan").domain?.enum, [
+    "fitness",
+    "productivity",
+    "learning",
+  ]);
+  // Adaptation is a diff with a one-sentence confirmation — never a rewrite.
+  assert.match(tool("adapt_plan").description ?? "", /never a regeneration/i);
+  assert.match(tool("adapt_plan").description ?? "", /ONE\s+sentence/);
+  assert.match(tool("adapt_plan").description ?? "", /Everything\s+else stands/);
+  assert.deepEqual(properties("adapt_plan").domain?.enum, [
     "fitness",
     "productivity",
     "learning",

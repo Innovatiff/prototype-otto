@@ -24,8 +24,10 @@ import { z } from "zod";
 import { COLLECTIONS, db } from "../firestore.js";
 import { errorFields, logInfo, logWarning } from "../log.js";
 import { tryEmbed } from "../memory/embed.js";
+import { adaptPlan, PlanAdaptationError } from "../plans/adapt.js";
 import { generatePlan, PlanGenerationError } from "../plans/generate.js";
-import { PlanConstraints } from "../plans/interview.js";
+import { PlanConstraints, PlanDomain } from "../plans/interview.js";
+import { loadActivePlan, saveNewPlan } from "../plans/store.js";
 import { summaryLine } from "../plans/summarize.js";
 
 // ── Inputs (mirror tools/definitions.ts; the model is validated, not trusted) ──
@@ -415,6 +417,9 @@ async function generatePlanTool(input: PlanConstraints, ctx: ToolContext): Promi
       now: ctx.now,
       onProgress: (stage) => ctx.emit({ type: "plan_progress", data: { stage } }),
     });
+    // Persisted before the client hears about it; any previous active plan
+    // in this domain is superseded in the same transaction.
+    await saveNewPlan(generated.plan);
     ctx.emit({ type: "plan_ready", data: generated.plan });
     return {
       result: JSON.stringify({
@@ -440,6 +445,56 @@ async function generatePlanTool(input: PlanConstraints, ctx: ToolContext): Promi
       return failure(
         "Plan generation failed twice; nothing was saved. Tell the user " +
           "plainly and offer to try again.",
+      );
+    }
+    throw err;
+  }
+}
+
+export const AdaptPlanInput = z.object({
+  domain: PlanDomain,
+  change: z.string().min(1).max(1000),
+});
+
+/**
+ * Load the active plan, patch it (sonnet diff, never regeneration), persist
+ * the new version superseding the old, and put the updated plan on screen.
+ * The model confirms in one sentence from the patch's own summary.
+ */
+async function adaptPlanTool(
+  input: z.infer<typeof AdaptPlanInput>,
+  ctx: ToolContext,
+): Promise<ToolExecution> {
+  const active = await loadActivePlan(ctx.uid, input.domain);
+  if (active === null) {
+    return failure(`No active ${input.domain} plan to adapt.`);
+  }
+  try {
+    const adapted = await adaptPlan({
+      userId: ctx.uid,
+      turnId: ctx.turnId,
+      plan: active,
+      change: input.change,
+      now: ctx.now,
+    });
+    await saveNewPlan(adapted.plan);
+    ctx.emit({ type: "plan_ready", data: adapted.plan });
+    return {
+      result: JSON.stringify({
+        adapted: true,
+        version: adapted.plan.meta.version,
+        summary: adapted.summary,
+        speak:
+          "Confirm in ONE sentence (the summary says what changed). The " +
+          "updated plan is already on their screen.",
+      }),
+    };
+  } catch (err) {
+    if (err instanceof PlanAdaptationError) {
+      logWarning("plan_adapt_gave_up", { userId: ctx.uid, errors: err.validationErrors });
+      return failure(
+        "The adaptation didn't hold up; the plan is unchanged. Tell the " +
+          "user plainly and ask them to rephrase what changed.",
       );
     }
     throw err;
@@ -497,6 +552,12 @@ export async function executeToolUse(
         return parsed.success
           ? await generatePlanTool(parsed.data, ctx)
           : failure("Invalid generate_plan input: domain and goal are required.");
+      }
+      case "adapt_plan": {
+        const parsed = AdaptPlanInput.safeParse(rawInput);
+        return parsed.success
+          ? await adaptPlanTool(parsed.data, ctx)
+          : failure("Invalid adapt_plan input: domain and change are required.");
       }
       case "propose_calendar_event": {
         const parsed = ProposeCalendarEventInput.safeParse(rawInput);

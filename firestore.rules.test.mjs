@@ -193,6 +193,34 @@ test("plans: cross-user read rejected, owner read succeeds", async () => {
   await assertSucceeds(getDoc(doc(alice, "plans/plan-alice")));
 });
 
+test("plans: immutable from clients — even the owner cannot write", async () => {
+  // Plans are server-authored; adaptation writes new versions via the API.
+  await assertFails(
+    setDoc(doc(alice, "plans/plan-new"), {
+      id: "plan-new",
+      ownerId: ALICE,
+      meta: { domain: "fitness", goal: "5k", horizonDays: 42, version: 1 },
+      constraints: {},
+      schedule: [],
+      sessions: [],
+      status: "active",
+      createdAt: "2026-07-30T14:00:00.000Z",
+    }),
+  );
+  await assertFails(
+    setDoc(doc(alice, "plans/plan-alice"), {
+      id: "plan-alice",
+      ownerId: ALICE,
+      meta: { domain: "fitness", goal: "10k", horizonDays: 42, version: 1 },
+      constraints: {},
+      schedule: [],
+      sessions: [],
+      status: "active",
+      createdAt: "2026-07-30T14:00:00.000Z",
+    }),
+  );
+});
+
 // ── cost telemetry: server-only, no client access at all ─────────────
 
 test("users: the owner reads and writes their own profile; nobody else's", async () => {

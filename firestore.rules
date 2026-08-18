@@ -51,11 +51,12 @@ service cloud.firestore {
       allow update: if ownsExisting() && ownsIncoming();
     }
 
-    // Plans land in Phase 4; locking the collection down now costs nothing.
+    // Plans are server-authored and IMMUTABLE — adaptation writes a new
+    // version document; nothing ever edits one in place. Clients read their
+    // own plans (the plan UI); every write goes through the API server.
     match /plans/{planId} {
-      allow read, delete: if ownsExisting();
-      allow create: if ownsIncoming();
-      allow update: if ownsExisting() && ownsIncoming();
+      allow read: if ownsExisting();
+      allow write: if false;
     }
 
     // Conversation sessions are written and read only by the API server —

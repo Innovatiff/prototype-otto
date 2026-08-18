@@ -11,7 +11,7 @@ import { COLLECTIONS, db } from "../firestore.js";
 import { errorFields, logError, logWarning } from "../log.js";
 import type { Tier } from "../router/selectModel.js";
 
-export type CostPurpose = "converse" | "extract_memory" | "brief" | "plan";
+export type CostPurpose = "converse" | "extract_memory" | "brief" | "plan" | "adapt";
 
 export interface CostEventInput {
   userId: string;
