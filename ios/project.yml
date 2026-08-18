@@ -60,6 +60,14 @@ targets:
         NSLocalNetworkUsageDescription: "Otto connects to your development server on your local network."
         NSContactsUsageDescription: "Otto looks up the person you name so you can text them."
         NSCalendarsFullAccessUsageDescription: "Otto reads your calendar to prepare your day and flag conflicts, and adds events only when you confirm them."
+        NSHealthShareUsageDescription: "Otto reads your workouts, active energy, body mass, sleep, and steps to personalize your training plans and daily briefings. Health data stays on this device and is never stored on Otto's servers."
+        NSHealthUpdateUsageDescription: "Otto saves your completed guided workouts to Health so your activity history stays complete."
+    # HealthKit capability (unblocked by the developer program). The
+    # entitlements file is generated alongside the project, like Info.plist.
+    entitlements:
+      path: Otto/Otto.entitlements
+      properties:
+        com.apple.developer.healthkit: true
     dependencies:
       - package: firebase-ios-sdk
         product: FirebaseAuth

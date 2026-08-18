@@ -38,8 +38,12 @@ final class GuidanceRuntime {
     private let voiceLoop: VoiceLoop
     private let store = GuidanceStore()
     private let backstop = GuidanceBackstop()
+    /// HealthKit is additive, never required — a denial changes nothing
+    /// about the session except that no workout is saved.
+    private let health = HealthService()
     private var conductor: GuidanceConductor?
     private var eventsTask: Task<Void, Never>?
+    private var workoutTracking = false
 
     init(voiceLoop: VoiceLoop) {
         self.voiceLoop = voiceLoop
@@ -54,14 +58,23 @@ final class GuidanceRuntime {
     // MARK: - Lifecycle
 
     /// Starts (or resumes) a session: audio held open, screen kept awake,
-    /// mic hot, conductor running. One session at a time.
+    /// mic hot, conductor running. One session at a time. Fitness sessions
+    /// also open a Health workout — authorization requested here, in
+    /// context, the first time one starts; never at launch.
     func start(
         planId: String,
+        domain: String,
         template: Session,
         progression: Progression?,
         resumeFrom: GuidanceSnapshot? = nil
     ) async {
         guard conductor == nil else { return }
+        if domain == "fitness", HealthService.isAvailable {
+            if await health.requestAuthorization() {
+                await health.beginWorkout(at: Date())
+                workoutTracking = true
+            }
+        }
         let conductor = GuidanceConductor(
             planId: planId,
             template: template,
@@ -170,10 +183,17 @@ final class GuidanceRuntime {
         currentStep = nil
         resting = false
         isPaused = false
+        answeringQuestion = false
         phase = .finished(early: early)
         GuidanceScreenLock.keepAwake(false)
         await voiceLoop.stopGuidanceListening()
         await voiceLoop.setGuidanceHold(false)
+        if workoutTracking {
+            // Ending early still finishes the workout honestly — the
+            // service itself discards anything under five minutes.
+            workoutTracking = false
+            await health.finishWorkout(at: Date())
+        }
         // Step 8: write the SessionRecord from lastSnapshot here.
     }
 
