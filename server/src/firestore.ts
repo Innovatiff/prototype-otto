@@ -15,6 +15,7 @@ export const COLLECTIONS = {
   tasks: "tasks",
   memories: "memories",
   sessions: "sessions",
+  briefs: "briefs",
   costEvents: "cost_events",
   costDaily: "cost_daily",
 } as const;

@@ -216,6 +216,19 @@ test("users: the owner reads and writes their own profile; nobody else's", async
   );
 });
 
+test("briefs: server-only — the owner cannot read or write their own brief", async () => {
+  await assertFails(getDoc(doc(alice, `briefs/${ALICE}_2026-08-18`)));
+  await assertFails(
+    setDoc(doc(alice, `briefs/${ALICE}_2026-08-18`), {
+      ownerId: ALICE,
+      date: "2026-08-18",
+      spoken: "forged",
+      summary: "forged",
+      createdAt: "2026-08-18T12:00:00.000Z",
+    }),
+  );
+});
+
 test("sessions: server-only — the owner cannot read or write their own session", async () => {
   await assertFails(getDoc(doc(alice, "sessions/sess-alice")));
   await assertFails(

@@ -10,6 +10,7 @@ import express, { type Request, type Response } from "express";
 import { errorBody, errorMiddleware } from "./errors.js";
 import { errorFields, logError, logInfo } from "./log.js";
 import { requireAuth } from "./middleware/auth.js";
+import { briefRouter } from "./routes/brief.js";
 import { converseRouter } from "./routes/converse.js";
 import { memoryRouter } from "./routes/memory.js";
 import { tasksRouter } from "./routes/tasks.js";
@@ -24,6 +25,7 @@ app.get("/healthz", (_req: Request, res: Response): void => {
 });
 
 app.use("/converse", requireAuth, converseRouter);
+app.use("/brief", requireAuth, briefRouter);
 app.use("/tasks", requireAuth, tasksRouter);
 app.use("/memory", requireAuth, memoryRouter);
 
