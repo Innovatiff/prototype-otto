@@ -48,4 +48,9 @@ actor ChecklistExecutor: StepExecutor {
         items = []
         index = 0
     }
+
+    func statusLine() async -> String? {
+        guard !items.isEmpty else { return nil }
+        return "Item \(min(index + 1, items.count)) of \(items.count)."
+    }
 }

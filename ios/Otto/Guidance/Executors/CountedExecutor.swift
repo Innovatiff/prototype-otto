@@ -84,6 +84,18 @@ actor CountedExecutor: StepExecutor {
         step = nil
     }
 
+    /// "Set 2 of 3, 8 reps." — or the rest clock when mid-rest.
+    func statusLine() async -> String? {
+        if let rest, let remaining = await rest.remainingSeconds {
+            return GuidancePhrases.remainingLine(seconds: remaining)
+        }
+        let set = GuidancePhrases.setLine(current: currentSet, total: totalSets)
+        if let reps = step?.target?.reps {
+            return "\(String(set.dropLast())), \(reps) reps."
+        }
+        return set
+    }
+
     // MARK: - The between-sets rest
 
     private func startRest() async {

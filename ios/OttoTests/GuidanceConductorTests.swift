@@ -281,6 +281,41 @@ final class GuidanceConductorTests: XCTestCase {
         XCTAssertEqual(Array(lines.suffix(2)), ["clip:timeUp", "clip:sessionDone"])
     }
 
+    // MARK: - Off-script questions
+
+    func testSuspendFreezesTheClockAndResumeAnchorsBack() async {
+        let recorder = GuidanceRecorder()
+        let conductor = makeConductor(
+            template: template(steps: [
+                Step(
+                    id: "t1", type: .timed, title: "Hold", cue: "Hold.",
+                    target: StepTarget(durationSec: 1), completion: .auto
+                )
+            ]),
+            recorder: recorder
+        )
+        await watch(conductor, into: recorder)
+        await conductor.start()
+        _ = await recorder.waitForLines(count: 2)
+
+        // Suspend mid-timer: position reported, nothing lost, nothing fires.
+        let position = await conductor.suspendForQuestion()
+        XCTAssertNotNil(position)
+        XCTAssertTrue(position?.hasSuffix("left.") ?? false)
+        try? await Task.sleep(for: .milliseconds(1300))
+        var lines = await recorder.lines
+        XCTAssertFalse(lines.contains("clip:timeUp"), "the clock is frozen under the question")
+
+        // Resume: "Back to it" + the anchor, then the timer finishes.
+        await conductor.resumeFromQuestion()
+        lines = await recorder.waitForLines(count: 6)
+        XCTAssertEqual(lines[2], "clip:backToIt")
+        XCTAssertTrue(lines[3].hasPrefix("say:") && lines[3].hasSuffix("left."))
+        XCTAssertEqual(Array(lines.suffix(2)), ["clip:timeUp", "clip:sessionDone"])
+        let finished = await recorder.waitForEvent("finished:false")
+        XCTAssertTrue(finished)
+    }
+
     // MARK: - Pause freezes the clock
 
     func testPauseHoldsATimerAndResumeFinishesIt() async {

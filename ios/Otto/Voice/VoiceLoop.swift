@@ -210,6 +210,8 @@ actor VoiceLoop {
     /// Guided-session listening: every final utterance emits as
     /// .guidanceUtterance and listening restarts — never a server turn.
     private var guidanceModeActive = false
+    /// One-shot: attached to the next turn's request (off-script questions).
+    private var guidanceTurnContext: GuidanceTurnContext?
     private var turnGeneration = 0
     private var timings = TurnTimings()
     private var lastMicLevelDb: Float = -120
@@ -332,6 +334,18 @@ actor VoiceLoop {
             return
         }
         await startListening()
+    }
+
+    /// An off-script question mid-guided-session: a normal server turn with
+    /// the current step attached as ephemeral context, streamed and spoken
+    /// through the usual pipeline (barge-in included). The guidance runtime
+    /// suspends the session before calling and resumes on .ottoDone.
+    func askDuringGuidance(_ text: String, context: GuidanceTurnContext) async {
+        if let transcriber {
+            await transcriber.cancel()
+        }
+        guidanceTurnContext = context
+        await runTurn(transcript: text, speechEndedAt: nil, endpointAt: nil)
     }
 
     /// Ends guidance listening. If no conversation is active either, the
@@ -606,6 +620,9 @@ actor VoiceLoop {
     private func runTurn(transcript: String, speechEndedAt: Date?, endpointAt: Date?) async {
         guard let serverURL else {
             emit(.notice("No server URL configured."))
+            // The turn is over before it began — flows waiting on ottoDone
+            // (an off-script suspension, most importantly) must not hang.
+            emit(.ottoDone)
             await startListening()
             return
         }
@@ -639,8 +656,11 @@ actor VoiceLoop {
             clientTimestamp: Date(),
             timezone: TimeZone.current.identifier,
             sessionId: sessionId,
-            events: calendarContext.isEmpty ? nil : calendarContext
+            events: calendarContext.isEmpty ? nil : calendarContext,
+            guidance: guidanceTurnContext
         )
+        // One-shot: the step context belongs to this question only.
+        guidanceTurnContext = nil
         let client = APIClient(baseURL: serverURL, auth: auth)
         turnTask = Task {
             await self.consumeTurnStream(client: client, turn: turn, clauseBuffer: clauseBuffer, unitStream: unitStream, generation: generation)
@@ -764,7 +784,7 @@ actor VoiceLoop {
             await micMonitor.stop()
         }
         guard generation == turnGeneration else { return }
-        if conversationActive {
+        if conversationActive || guidanceModeActive {
             await startListening()
         } else {
             setState(.idle)

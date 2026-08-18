@@ -106,6 +106,25 @@ enum GuidanceCommandClassifier {
         return nil
     }
 
+    /// The off-script gate: only question-shaped or Otto-addressed
+    /// utterances escalate to the server. Gym chatter and grunts must never
+    /// make Otto speak up uninvited — a dropped question costs a repeat; a
+    /// false positive talks over someone's set.
+    static func looksLikeQuestion(_ utterance: String) -> Bool {
+        let raw = utterance.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !raw.isEmpty else { return false }
+        if raw.hasSuffix("?") { return true }
+        let tokens = raw
+            .replacingOccurrences(of: ",", with: " ")
+            .split(separator: " ")
+            .map { $0.trimmingCharacters(in: .punctuationCharacters) }
+            .filter { !$0.isEmpty }
+        guard let first = tokens.first else { return false }
+        if first == "otto" { return true }
+        if first == "hey", tokens.count > 1, tokens[1] == "otto" { return true }
+        return questionStarters.contains(first)
+    }
+
     // MARK: - Pieces
 
     private static func canonicalUnit(_ raw: String) -> String {

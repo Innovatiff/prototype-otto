@@ -161,6 +161,36 @@ test("the gate ruling flips to a prohibition when disallowed", () => {
   assert.ok(parts.dynamic.includes("Do not use any term of address this turn."));
 });
 
+test("an off-script guidance question leads the dynamic block and demands brevity", () => {
+  const parts = buildSystemPrompt(user("Boss"), [], [], {
+    now: NOW,
+    timezone: "America/Toronto",
+    addressAllowed: false,
+    events: [],
+    weather: null,
+    plans: [],
+    guidance: {
+      sessionTitle: "Upper A",
+      stepTitle: "Goblet squat",
+      stepCue: "Chest tall. Sit between your heels.",
+      position: "set 2 of 3, 8 reps",
+    },
+  });
+  assert.ok(parts.dynamic.startsWith("GUIDED SESSION IN PROGRESS"));
+  assert.ok(parts.dynamic.includes('"Goblet squat" (set 2 of 3, 8 reps)'));
+  assert.ok(parts.dynamic.includes("one or two short sentences, then STOP"));
+  // Absent guidance leaves the block out entirely.
+  const plain = buildSystemPrompt(user("Boss"), [], [], {
+    now: NOW,
+    timezone: "America/Toronto",
+    addressAllowed: false,
+    events: [],
+    weather: null,
+    plans: [],
+  });
+  assert.ok(plain.dynamic.startsWith("CURRENT CONTEXT"));
+});
+
 test("an invalid timezone falls back to UTC instead of throwing", () => {
   const parts = buildSystemPrompt(user("Boss"), [], [], {
     now: NOW,

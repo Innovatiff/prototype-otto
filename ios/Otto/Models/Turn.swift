@@ -12,6 +12,48 @@
 
 import Foundation
 
+struct GuidanceTurnContext: Codable, Hashable, Sendable {
+    var sessionTitle: String
+    var stepTitle: String
+    var stepCue: String
+    var position: String?
+
+    init(
+        sessionTitle: String,
+        stepTitle: String,
+        stepCue: String,
+        position: String? = nil
+    ) {
+        self.sessionTitle = sessionTitle
+        self.stepTitle = stepTitle
+        self.stepCue = stepCue
+        self.position = position
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionTitle
+        case stepTitle
+        case stepCue
+        case position
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.sessionTitle = try container.decode(String.self, forKey: .sessionTitle)
+        self.stepTitle = try container.decode(String.self, forKey: .stepTitle)
+        self.stepCue = try container.decode(String.self, forKey: .stepCue)
+        self.position = try container.decodeIfPresent(String.self, forKey: .position)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.sessionTitle, forKey: .sessionTitle)
+        try container.encode(self.stepTitle, forKey: .stepTitle)
+        try container.encode(self.stepCue, forKey: .stepCue)
+        try container.encodeIfPresent(self.position, forKey: .position)
+    }
+}
+
 struct TurnEvent: Codable, Hashable, Sendable {
     var type: TurnEventType
     var data: JSONValue?
@@ -72,6 +114,7 @@ struct TurnRequest: Codable, Hashable, Sendable {
     var timezone: String
     var sessionId: String?
     var events: [CalendarEvent]?
+    var guidance: GuidanceTurnContext?
 
     init(
         turnId: String,
@@ -79,7 +122,8 @@ struct TurnRequest: Codable, Hashable, Sendable {
         clientTimestamp: Date,
         timezone: String,
         sessionId: String? = nil,
-        events: [CalendarEvent]? = nil
+        events: [CalendarEvent]? = nil,
+        guidance: GuidanceTurnContext? = nil
     ) {
         self.turnId = turnId
         self.text = text
@@ -87,6 +131,7 @@ struct TurnRequest: Codable, Hashable, Sendable {
         self.timezone = timezone
         self.sessionId = sessionId
         self.events = events
+        self.guidance = guidance
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -96,6 +141,7 @@ struct TurnRequest: Codable, Hashable, Sendable {
         case timezone
         case sessionId
         case events
+        case guidance
     }
 
     init(from decoder: any Decoder) throws {
@@ -106,6 +152,7 @@ struct TurnRequest: Codable, Hashable, Sendable {
         self.timezone = try container.decode(String.self, forKey: .timezone)
         self.sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
         self.events = try container.decodeIfPresent([CalendarEvent].self, forKey: .events)
+        self.guidance = try container.decodeIfPresent(GuidanceTurnContext.self, forKey: .guidance)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -116,5 +163,6 @@ struct TurnRequest: Codable, Hashable, Sendable {
         try container.encode(self.timezone, forKey: .timezone)
         try container.encodeIfPresent(self.sessionId, forKey: .sessionId)
         try container.encodeIfPresent(self.events, forKey: .events)
+        try container.encodeIfPresent(self.guidance, forKey: .guidance)
     }
 }

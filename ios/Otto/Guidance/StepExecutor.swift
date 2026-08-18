@@ -61,6 +61,13 @@ protocol StepExecutor: AnyObject, Sendable {
     func begin(_ step: Step) async
     func handleVoiceCommand(_ cmd: VoiceCommand) async -> ExecutorResult
     func cancel() async
+    /// One short spoken line locating the user in the step — the off-script
+    /// return anchor: "Set 2 of 3, 8 reps." Nil where position means nothing.
+    func statusLine() async -> String?
+}
+
+extension StepExecutor {
+    func statusLine() async -> String? { nil }
 }
 
 enum StepExecutors {

@@ -153,6 +153,25 @@ final class GuidanceExecutorTests: XCTestCase {
         await counted.cancel()
     }
 
+    func testStatusLinesAnchorTheReturnFromAQuestion() async {
+        let recorder = OutputRecorder()
+        let counted = CountedExecutor(output: recorder, restSeconds: 30)
+        await counted.begin(step(.counted))
+        let anchor = await counted.statusLine()
+        XCTAssertEqual(anchor, "Set 1 of 3, 8 reps.")
+
+        let checklist = ChecklistExecutor(output: recorder)
+        await checklist.begin(step(.checklist, cue: "Knife. Board. Towel.", target: nil))
+        _ = await checklist.handleVoiceCommand(.next)
+        let item = await checklist.statusLine()
+        XCTAssertEqual(item, "Item 2 of 3.")
+
+        let prompt = PromptExecutor(output: recorder)
+        await prompt.begin(step(.prompt, cue: "Pat dry.", target: nil))
+        let none = await prompt.statusLine()
+        XCTAssertNil(none, "a prompt has no position worth speaking")
+    }
+
     // MARK: - ChecklistExecutor
 
     func testChecklistReadsOneItemAtATime() async {

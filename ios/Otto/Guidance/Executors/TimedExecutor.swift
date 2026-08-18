@@ -149,6 +149,11 @@ actor TimedExecutor: StepExecutor {
         core?.remaining(now: Date())
     }
 
+    func statusLine() async -> String? {
+        guard let core else { return nil }
+        return GuidancePhrases.remainingLine(seconds: core.remaining(now: Date()))
+    }
+
     // MARK: - The countdown loop
 
     private func runTicker() {

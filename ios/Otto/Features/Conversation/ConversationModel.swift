@@ -385,7 +385,10 @@ final class ConversationModel {
             appendOttoToken(token)
         case .ottoDone:
             ottoTurnOpen = false
-            if pendingDraft != nil {
+            if guidance.answeringQuestion {
+                // An off-script answer just finished — return to the step.
+                Task { await self.guidance.answerFinished() }
+            } else if pendingDraft != nil {
                 // Start the read-back flow only after Otto's own words finish.
                 Task { await self.beginDraftFlow() }
             } else if pendingCalendarProposal != nil {

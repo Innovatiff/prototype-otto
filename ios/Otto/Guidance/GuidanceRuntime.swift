@@ -25,6 +25,8 @@ final class GuidanceRuntime {
     private(set) var totalSteps = 0
     private(set) var resting = false
     private(set) var isPaused = false
+    /// An off-script answer is in flight; the session is suspended under it.
+    private(set) var answeringQuestion = false
     /// The finished session's truth — Step 8 writes the SessionRecord from
     /// this.
     private(set) var lastSnapshot: GuidanceSnapshot?
@@ -93,14 +95,43 @@ final class GuidanceRuntime {
     }
 
     /// Every guidance utterance lands here. Commands classify ON DEVICE and
-    /// act instantly; anything else is off-script (Step 6 escalates it with
-    /// the current step as context — for now it stays unanswered, which is
-    /// silence, which is correct).
+    /// act instantly. Question-shaped leftovers go off-script: suspend the
+    /// session, ask the server with the step as context, resume on the
+    /// answer's end. Plain chatter is dropped — silence is correct.
     func handleUtterance(_ text: String) async {
         guard let conductor else { return }
+        guard !answeringQuestion else { return }
         if let command = GuidanceCommandClassifier.classify(text) {
             await conductor.handle(command)
+            return
         }
+        guard GuidanceCommandClassifier.looksLikeQuestion(text) else { return }
+        await beginOffScript(question: text, conductor: conductor)
+    }
+
+    /// PAUSE the session state — do not lose position — then a normal
+    /// server turn carrying the current step. "One sec." tells them they
+    /// were heard before the round trip.
+    private func beginOffScript(question: String, conductor: GuidanceConductor) async {
+        guard let step = currentStep else { return }
+        answeringQuestion = true
+        await voiceLoop.playClip(.oneSec)
+        let position = await conductor.suspendForQuestion()
+        let context = GuidanceTurnContext(
+            sessionTitle: sessionTitle,
+            stepTitle: step.title,
+            stepCue: step.cue,
+            position: position
+        )
+        await voiceLoop.askDuringGuidance(question, context: context)
+    }
+
+    /// The answer finished speaking (ConversationModel forwards .ottoDone
+    /// while a question is live): back to the step, clock intact.
+    func answerFinished() async {
+        guard answeringQuestion else { return }
+        answeringQuestion = false
+        await conductor?.resumeFromQuestion()
     }
 
     /// The UI's tap alternative to voice — the "Done" button is `.next`.

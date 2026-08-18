@@ -250,6 +250,48 @@ actor GuidanceConductor {
         await beginCurrentStep()
     }
 
+    // MARK: - Off-script questions (Step 6)
+
+    /// Freezes the session for an off-script answer — timers stop, nothing
+    /// is lost, no ceremony spoken. Returns the position line ("Set 2 of 3,
+    /// 8 reps.") for the server's context; the same line anchors the return.
+    func suspendForQuestion() async -> String? {
+        _ = await session.pause()
+        await freezeTimers()
+        emit(.paused(true))
+        return await positionLine()
+    }
+
+    /// Back from the answer: "Back to it — set 2 of 3, 8 reps." spoken
+    /// while the clock is still frozen, then everything restarts exactly
+    /// where it stopped.
+    func resumeFromQuestion() async {
+        _ = await session.resume()
+        await playClipLine(.backToIt)
+        if let line = await positionLine() {
+            await speakLine(line)
+        }
+        await unfreezeTimers()
+        emit(.paused(false))
+    }
+
+    private func positionLine() async -> String? {
+        if let interStepRest, let remaining = await interStepRest.remainingSeconds {
+            return GuidancePhrases.remainingLine(seconds: remaining)
+        }
+        return await executor?.statusLine()
+    }
+
+    private func freezeTimers() async {
+        _ = await interStepRest?.handleVoiceCommand(.pause)
+        _ = await executor?.handleVoiceCommand(.pause)
+    }
+
+    private func unfreezeTimers() async {
+        _ = await interStepRest?.handleVoiceCommand(.resume)
+        _ = await executor?.handleVoiceCommand(.resume)
+    }
+
     // MARK: - Session-level commands
 
     private func handleSessionCommand(_ cmd: VoiceCommand) async {

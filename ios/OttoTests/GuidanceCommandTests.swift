@@ -85,6 +85,37 @@ final class GuidanceCommandTests: XCTestCase {
         XCTAssertEqual(classify("what's left"), .timeLeft)
     }
 
+    func testOffScriptGateEscalatesQuestionsNotChatter() {
+        let escalates = [
+            "how much salt",
+            "can I substitute chicken",
+            "is this the right grip?",
+            "should my back be flat",
+            "otto what do I do with my elbows",
+            "hey otto, is this too heavy",
+            "that felt weird?",
+        ]
+        for utterance in escalates {
+            XCTAssertTrue(
+                GuidanceCommandClassifier.looksLikeQuestion(utterance),
+                "\(utterance) should escalate"
+            )
+        }
+        let drops = [
+            "nice one man",
+            "that was heavy",
+            "hey nice set",
+            "one more song",
+            "",
+        ]
+        for utterance in drops {
+            XCTAssertFalse(
+                GuidanceCommandClassifier.looksLikeQuestion(utterance),
+                "\(utterance) must never make Otto speak uninvited"
+            )
+        }
+    }
+
     func testChecklistAndSessionEnds() {
         XCTAssertEqual(classify("check"), .next)
         XCTAssertEqual(classify("that's enough"), .stop)

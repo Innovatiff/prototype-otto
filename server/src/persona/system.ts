@@ -18,6 +18,7 @@ import type {
   CalendarEvent,
   ConversationMessage,
   CurrentWeather,
+  GuidanceTurnContext,
   Memory,
   Plan,
   Task,
@@ -106,6 +107,8 @@ export interface PersonaContext {
   weather: CurrentWeather | null;
   /** The user's active plans (one per domain at most). */
   plans: Plan[];
+  /** Present only when this turn is an off-script question mid-session. */
+  guidance?: GuidanceTurnContext;
 }
 
 export interface SystemPromptParts {
@@ -250,6 +253,24 @@ export function formatTasks(tasks: Task[]): string {
 }
 
 /**
+ * The off-script block: the user is MID-SESSION, hands full, asking one
+ * question. The model answers it and gets out of the way — the runtime
+ * speaks the return-to-step line itself.
+ */
+export function formatGuidance(guidance: GuidanceTurnContext): string {
+  const position = guidance.position !== undefined ? ` (${guidance.position})` : "";
+  return [
+    "GUIDED SESSION IN PROGRESS — OFF-SCRIPT QUESTION",
+    `They are mid-session: "${guidance.sessionTitle}", on the step ` +
+      `"${guidance.stepTitle}"${position}. The step's cue: "${guidance.stepCue}"`,
+    "Answer the question in one or two short sentences, then STOP. Do not",
+    "re-explain the step, do not offer plan changes, do not add follow-ups —",
+    "the session runtime returns them to the step itself. No tools unless",
+    "the question itself demands one.",
+  ].join("\n");
+}
+
+/**
  * The ACTIVE PLANS block: one line per active plan so the model knows a
  * plan exists (adapt_plan needs one) and where the user is in it. "(none)"
  * matters — it tells the model adapt_plan has nothing to patch.
@@ -295,6 +316,9 @@ export function buildSystemPrompt(
   }
 
   const dynamic = [
+    // An off-script question leads the dynamic block: nothing matters more
+    // this turn than what the user is doing right now.
+    ...(context.guidance !== undefined ? [formatGuidance(context.guidance), ""] : []),
     "CURRENT CONTEXT",
     `Now: ${formatClock(context.now, context.timezone)}`,
     "",

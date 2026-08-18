@@ -117,6 +117,7 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     events: turn.events ?? [],
     weather,
     plans: activePlans,
+    ...(turn.guidance !== undefined ? { guidance: turn.guidance } : {}),
   });
 
   const intent = classify(text);

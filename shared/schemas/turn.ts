@@ -2,6 +2,22 @@ import { z } from "zod";
 import { CalendarEvent } from "./calendar.js";
 import { isoDateTime, zId } from "./common.js";
 
+/**
+ * Attached when the user asks something OFF-SCRIPT mid-guided-session
+ * ("how much salt?"). The model needs to know exactly what they're doing
+ * right now, and to answer briefly — the runtime returns them to the step.
+ * Ephemeral context for one turn; never persisted.
+ */
+export const GuidanceTurnContext = z.object({
+  sessionTitle: z.string().min(1),
+  stepTitle: z.string().min(1),
+  /** The step's spoken cue, verbatim — often contains the answer's context. */
+  stepCue: z.string(),
+  /** Where they are: "set 2 of 3, 8 reps" / "4 minutes 10 left". */
+  position: z.string().optional(),
+});
+export type GuidanceTurnContext = z.infer<typeof GuidanceTurnContext>;
+
 /** A single user utterance sent to /converse. */
 export const TurnRequest = z.object({
   turnId: zId,
@@ -22,6 +38,8 @@ export const TurnRequest = z.object({
    * tool call.
    */
   events: z.array(CalendarEvent).max(60).optional(),
+  /** Present only for off-script questions during a guided session. */
+  guidance: GuidanceTurnContext.optional(),
 });
 export type TurnRequest = z.infer<typeof TurnRequest>;
 
