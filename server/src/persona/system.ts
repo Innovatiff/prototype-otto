@@ -23,6 +23,8 @@ import type {
   UserProfile,
 } from "@otto/shared";
 
+import { INTERVIEW_GUIDANCE } from "../plans/interview.js";
+import { SAFETY_GUIDANCE } from "../plans/safety.js";
 import { estimateTokens } from "../router/selectModel.js";
 import { wallDate, wallTime } from "../util/time.js";
 
@@ -109,13 +111,18 @@ export interface SystemPromptParts {
   dynamic: string;
 }
 
-/** The static identity block for a user. Pure function of addressTerm. */
+/**
+ * The static identity block for a user. Pure function of addressTerm.
+ * The plan blocks ride here because they are static too — interview rules
+ * and outcome honesty change per deploy, never per turn, so they cache.
+ */
 export function buildStaticPrefix(addressTerm: string): string {
   const addressing =
     addressTerm === NO_ADDRESS_TERM
       ? NO_ADDRESSING_SECTION
       : ADDRESSING_TEMPLATE.replaceAll("{{ADDRESS_TERM}}", addressTerm);
-  return IDENTITY_TEMPLATE.replace("{{ADDRESSING_SECTION}}", addressing);
+  const identity = IDENTITY_TEMPLATE.replace("{{ADDRESSING_SECTION}}", addressing);
+  return [identity, INTERVIEW_GUIDANCE, SAFETY_GUIDANCE].join("\n\n");
 }
 
 /**

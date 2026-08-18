@@ -24,6 +24,9 @@ import { z } from "zod";
 import { COLLECTIONS, db } from "../firestore.js";
 import { errorFields, logInfo, logWarning } from "../log.js";
 import { tryEmbed } from "../memory/embed.js";
+import { generatePlan, PlanGenerationError } from "../plans/generate.js";
+import { PlanConstraints } from "../plans/interview.js";
+import { summaryLine } from "../plans/summarize.js";
 
 // ── Inputs (mirror tools/definitions.ts; the model is validated, not trusted) ──
 
@@ -397,6 +400,52 @@ function proposeCalendarMove(
   };
 }
 
+/**
+ * The generation UX contract: progress events while the opus call runs, the
+ * finished Plan to the SCREEN as an event, and only summary facts to the
+ * model — so the full plan structurally cannot be read aloud. Not persisted
+ * yet; storage and versioning land with the store module.
+ */
+async function generatePlanTool(input: PlanConstraints, ctx: ToolContext): Promise<ToolExecution> {
+  try {
+    const generated = await generatePlan({
+      userId: ctx.uid,
+      turnId: ctx.turnId,
+      constraints: input,
+      now: ctx.now,
+      onProgress: (stage) => ctx.emit({ type: "plan_progress", data: { stage } }),
+    });
+    ctx.emit({ type: "plan_ready", data: generated.plan });
+    return {
+      result: JSON.stringify({
+        created: true,
+        summary: summaryLine(generated.plan),
+        speak:
+          "Say a summary from these facts in under 60 words, honest about " +
+          "what the timeframe delivers. The full plan is already on their " +
+          "screen — never read the plan itself aloud.",
+        ...(generated.riskSignals.length > 0
+          ? {
+              riskNote:
+                "Risk signals were detected; the plan is performance-framed. " +
+                "Say plainly what is realistic — no appearance or calorie promises.",
+            }
+          : {}),
+      }),
+    };
+  } catch (err) {
+    ctx.emit({ type: "plan_failed", data: {} });
+    if (err instanceof PlanGenerationError) {
+      logWarning("plan_generation_gave_up", { userId: ctx.uid, errors: err.validationErrors });
+      return failure(
+        "Plan generation failed twice; nothing was saved. Tell the user " +
+          "plainly and offer to try again.",
+      );
+    }
+    throw err;
+  }
+}
+
 function draftMessage(input: z.infer<typeof DraftMessageInput>, ctx: ToolContext): ToolExecution {
   // Nothing persists and nothing sends — the client reads the draft back
   // aloud and hands off to the system compose sheet.
@@ -442,6 +491,12 @@ export async function executeToolUse(
       case "draft_message": {
         const parsed = DraftMessageInput.safeParse(rawInput);
         return parsed.success ? draftMessage(parsed.data, ctx) : failure("Invalid draft_message input.");
+      }
+      case "generate_plan": {
+        const parsed = PlanConstraints.safeParse(rawInput);
+        return parsed.success
+          ? await generatePlanTool(parsed.data, ctx)
+          : failure("Invalid generate_plan input: domain and goal are required.");
       }
       case "propose_calendar_event": {
         const parsed = ProposeCalendarEventInput.safeParse(rawInput);

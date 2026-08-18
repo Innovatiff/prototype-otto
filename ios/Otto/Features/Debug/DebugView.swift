@@ -120,7 +120,8 @@ final class DebugModel {
             let tier = info?["tier"]?.stringValue ?? "?"
             let modelName = info?["model"]?.stringValue ?? "on-device"
             statusLine = "done — tier: \(tier), model: \(modelName)"
-        case .taskCreated, .taskUpdated, .draft, .calendarProposal:
+        case .taskCreated, .taskUpdated, .draft, .calendarProposal,
+             .planProgress, .planReady, .planFailed:
             statusLine = "(\(event.type.rawValue))"
         case .error:
             statusLine = "Server error event: \(event.data?.stringValue ?? "unknown")"

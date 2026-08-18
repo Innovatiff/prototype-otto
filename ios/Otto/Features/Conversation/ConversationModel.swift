@@ -81,6 +81,21 @@ final class ConversationModel {
     private(set) var calendarStage: CalendarStage = .idle
     private var pendingCalendarProposal: CalendarProposal?
 
+    // MARK: - Plan generation
+
+    /// Generation takes 30-60 seconds; these drive the on-screen progress
+    /// text ("Designing your week…"). Never a spinner.
+    enum PlanPhase: Equatable {
+        case idle
+        case designing
+        case scheduling
+    }
+
+    private(set) var planPhase: PlanPhase = .idle
+    /// The freshly generated plan — the full detail on screen while the
+    /// voice speaks only a summary. Never read aloud.
+    private(set) var planCard: Plan?
+
     // MARK: - The morning brief
 
     /// The structured half of the brief, rendered while Otto speaks.
@@ -316,6 +331,11 @@ final class ConversationModel {
                 ottoTurnOpen = false
                 refreshCalendarContext()
             }
+            if newState == .listening || newState == .idle {
+                // A barge-in or stop cancels the turn stream; a generation
+                // still in flight will never deliver, so clear its progress.
+                planPhase = .idle
+            }
             if newState == .idle {
                 // The conversation can end (stop button, interruption) while
                 // the last row is still a live partial; seal it so a later,
@@ -347,6 +367,15 @@ final class ConversationModel {
             Task { await self.handleCapturedReply(text) }
         case .briefRequested:
             Task { await self.runBrief() }
+        case .planProgress(let stage):
+            withAnimation(.snappy) {
+                planPhase = stage == .designing ? .designing : .scheduling
+            }
+        case .planReady(let plan):
+            planPhase = .idle
+            withAnimation(.snappy) { planCard = plan }
+        case .planFailed:
+            planPhase = .idle
         case .task(let task):
             tasksModel.apply(task)
             Task {
@@ -671,6 +700,10 @@ final class ConversationModel {
 
     func dismissBrief() {
         withAnimation(.snappy) { briefCard = nil }
+    }
+
+    func dismissPlan() {
+        withAnimation(.snappy) { planCard = nil }
     }
 
     /// Pushes today+tomorrow's events into the loop for ambient context.

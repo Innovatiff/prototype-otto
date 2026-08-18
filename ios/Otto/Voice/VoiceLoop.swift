@@ -39,6 +39,12 @@ struct TurnTimings: Sendable {
     }
 }
 
+/// Where a running plan generation is, per the server's streamed events.
+enum PlanProgressStage: String, Sendable {
+    case designing
+    case scheduling
+}
+
 /// Everything the conversation UI needs, on one lossless stream. Mic levels
 /// ride a separate lossy stream so a slow UI can never drop a transcript.
 enum ConversationEvent: Sendable {
@@ -62,6 +68,14 @@ enum ConversationEvent: Sendable {
     /// The utterance asked for the morning brief — the model runs the brief
     /// flow (calendar + POST /brief) instead of a server turn.
     case briefRequested
+    /// Plan generation progress — drives the on-screen state text
+    /// ("Designing your week…"), never a spinner.
+    case planProgress(PlanProgressStage)
+    /// The finished plan, for the SCREEN. The voice gets only a summary;
+    /// the full plan is never spoken.
+    case planReady(Plan)
+    /// Generation failed server-side; the UI clears its progress state.
+    case planFailed
     /// The server's effective conversation session for the last turn — the
     /// model persists it so a relaunch resumes the same conversation.
     case session(String)
@@ -581,6 +595,17 @@ actor VoiceLoop {
                     if let proposal = event.data?.decoded(as: CalendarProposal.self) {
                         emit(.calendarProposal(proposal))
                     }
+                case .planProgress:
+                    if let raw = event.data?.objectValue?["stage"]?.stringValue,
+                       let stage = PlanProgressStage(rawValue: raw) {
+                        emit(.planProgress(stage))
+                    }
+                case .planReady:
+                    if let plan = event.data?.decoded(as: Plan.self) {
+                        emit(.planReady(plan))
+                    }
+                case .planFailed:
+                    emit(.planFailed)
                 }
             }
             clauseBuffer.finish()

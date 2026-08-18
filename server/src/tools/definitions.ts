@@ -179,6 +179,54 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
     },
   },
   {
+    name: "generate_plan",
+    description:
+      "Generate a complete multi-week plan (workout program, weekly " +
+      "structure, study plan). Run the short constraints interview FIRST — " +
+      "see PLAN INTERVIEWS. Building takes about a minute, so before " +
+      "calling, tell them in one short line, e.g. 'Give me a minute — I'm " +
+      "building this out.' The full plan renders on their screen; the " +
+      "result gives you summary facts. Speak a summary from them in under " +
+      "60 words — NEVER read the plan itself aloud, and never promise a " +
+      "body outcome by a date. Pass every constraint they gave and every " +
+      "relevant memory (injuries, equipment, schedule).",
+    input_schema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", enum: ["fitness", "productivity", "learning"] },
+        goal: { type: "string", description: "Their goal in their words." },
+        horizonDays: { type: "integer", description: "Plan length in days, 7-180." },
+        daysPerWeek: { type: "integer", description: "Fitness: training days available." },
+        minutesPerSession: { type: "integer", description: "Fitness: minutes per session." },
+        equipment: {
+          type: "array",
+          items: { type: "string" },
+          description: "Fitness: exactly what they have, e.g. ['dumbbells', 'bench'].",
+        },
+        limitations: {
+          type: "array",
+          items: { type: "string" },
+          description: "Injuries or constraints, e.g. ['left shoulder'].",
+        },
+        experienceLevel: { type: "string" },
+        workType: { type: "string", description: "Productivity: what their work is." },
+        peakHours: { type: "string", description: "Productivity: when they're sharpest." },
+        fixedCommitments: {
+          type: "array",
+          items: { type: "string" },
+          description: "Productivity: immovable blocks, e.g. ['standup 9:30 weekdays'].",
+        },
+        monthGoal: { type: "string", description: "Productivity: this month's aim." },
+        currentLevel: { type: "string", description: "Learning: where they are now." },
+        minutesPerDay: { type: "integer", description: "Learning: daily minutes available." },
+        targetDate: { type: "string", description: "Learning: exam or deadline, as they said it." },
+        motivation: { type: "string", description: "Learning: why — changes the approach." },
+        notes: { type: "string", description: "Anything else material." },
+      },
+      required: ["domain", "goal"],
+    },
+  },
+  {
     name: "draft_message",
     description:
       "Produce a message draft for the user to send. Returns the draft only " +

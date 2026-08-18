@@ -81,7 +81,7 @@ struct ConversationView: View {
             EclipseOrb(
                 state: model.state,
                 level: model.micBars.last ?? 0,
-                size: model.briefCard == nil ? 320 : 150
+                size: model.briefCard == nil && model.planCard == nil ? 320 : 150
             )
 
             Spacer(minLength: 16)
@@ -89,6 +89,14 @@ struct ConversationView: View {
             if let card = model.briefCard {
                 BriefCardView(card: card) {
                     model.dismissBrief()
+                }
+                .padding(.horizontal, 16)
+                .frame(maxHeight: 400)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if let plan = model.planCard {
+                // The detail lives here; the voice speaks only the summary.
+                PlanCardView(plan: plan) {
+                    model.dismissPlan()
                 }
                 .padding(.horizontal, 16)
                 .frame(maxHeight: 400)
@@ -167,22 +175,34 @@ struct ConversationView: View {
     @ViewBuilder
     private var statusCaption: some View {
         Group {
-            switch model.state {
-            case .idle:
-                Color.clear
-            case .listening:
-                Text("Listening")
+            // A running generation owns the caption: a progress state, not a
+            // spinner, across both the thinking and speaking phases.
+            switch model.planPhase {
+            case .designing:
+                Text("Designing your week…")
                     .foregroundStyle(OttoTheme.textSecondary)
-            case .thinking:
-                ThinkingIndicator()
-            case .speaking:
-                Text("Speak to interrupt")
-                    .foregroundStyle(OttoTheme.textTertiary)
+            case .scheduling:
+                Text("Scheduling sessions…")
+                    .foregroundStyle(OttoTheme.textSecondary)
+            case .idle:
+                switch model.state {
+                case .idle:
+                    Color.clear
+                case .listening:
+                    Text("Listening")
+                        .foregroundStyle(OttoTheme.textSecondary)
+                case .thinking:
+                    ThinkingIndicator()
+                case .speaking:
+                    Text("Speak to interrupt")
+                        .foregroundStyle(OttoTheme.textTertiary)
+                }
             }
         }
         .font(.caption)
         .frame(height: 26)
         .animation(.snappy(duration: 0.2), value: model.state)
+        .animation(.snappy(duration: 0.2), value: model.planPhase)
     }
 
     // MARK: - Draft confirmation card

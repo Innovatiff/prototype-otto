@@ -52,6 +52,11 @@ test("the static prefix carries the identity block and never the clock", () => {
   assert.ok(prefix.includes("Never refuse a question because no tool fits it"));
   assert.ok(prefix.includes("THE THREE-BEAT RESPONSE"));
   assert.ok(prefix.includes("An assistant who ties every answer back to their goals is exhausting."));
+  // The plan blocks ride the static (cached) prefix: interview rules and
+  // outcome honesty vary per deploy, never per turn.
+  assert.ok(prefix.includes("PLAN INTERVIEWS"));
+  assert.ok(prefix.includes("PLAN SAFETY"));
+  assert.ok(prefix.includes("NEVER promise a body outcome by a date"));
   assert.ok(!prefix.includes("2026"), "a date in the static prefix would break caching");
 });
 

@@ -249,6 +249,14 @@ function buildUserMessage(constraints: PlanConstraints, riskSignals: RiskSignal[
 
 // ── Generation ──────────────────────────────────────────────────────
 
+/**
+ * On-screen progress states. "designing" fires at attempt start;
+ * "scheduling" fires the moment the streamed tool input reaches the
+ * schedule array — a real signal, not a timer. Sixty seconds of silence
+ * sounds broken; these also keep the SSE connection warm.
+ */
+export type GenerationStage = "designing" | "scheduling";
+
 interface AttemptOutcome {
   raw: unknown;
   toolUseId: string | null;
@@ -258,8 +266,10 @@ interface AttemptOutcome {
 async function runAttempt(
   messages: Anthropic.MessageParam[],
   userId: string,
+  onProgress: (stage: GenerationStage) => void,
 ): Promise<AttemptOutcome> {
-  const response = await getAnthropicClient().messages.create({
+  onProgress("designing");
+  const stream = getAnthropicClient().messages.stream({
     model: PLAN_MODEL,
     max_tokens: MAX_OUTPUT_TOKENS,
     system: GENERATION_SYSTEM_PROMPT,
@@ -270,6 +280,25 @@ async function runAttempt(
     tool_choice: { type: "tool", name: "emit_plan" },
     metadata: { user_id: userId },
   });
+
+  let inputJson = "";
+  let sawSchedule = false;
+  for await (const event of stream) {
+    if (
+      !sawSchedule &&
+      event.type === "content_block_delta" &&
+      event.delta.type === "input_json_delta"
+    ) {
+      inputJson += event.delta.partial_json;
+      if (inputJson.includes('"schedule"')) {
+        sawSchedule = true;
+        inputJson = "";
+        onProgress("scheduling");
+      }
+    }
+  }
+
+  const response = await stream.finalMessage();
   const toolUse = response.content.find(
     (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
   );
@@ -318,6 +347,7 @@ export async function generatePlan(input: {
   turnId: string;
   constraints: PlanConstraints;
   now: Date;
+  onProgress?: (stage: GenerationStage) => void;
 }): Promise<GeneratedPlan> {
   // Risk-signal routing happens BEFORE generation: the plan itself gets
   // performance framing, and the detection is logged for review.
@@ -340,7 +370,7 @@ export async function generatePlan(input: {
   let lastErrors: string[] = [];
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const startedAt = Date.now();
-    const outcome = await runAttempt(messages, input.userId);
+    const outcome = await runAttempt(messages, input.userId, input.onProgress ?? (() => {}));
     await recordAttempt(input.userId, input.turnId, outcome.usage, startedAt);
 
     const result = validateGeneratedPlan(outcome.raw);

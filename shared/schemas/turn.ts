@@ -34,6 +34,16 @@ export const TurnEventType = z.enum([
   "draft",
   /** A CalendarProposal: confirmed, written, and read back on-device. */
   "calendar_proposal",
+  /**
+   * Plan generation progress: { stage: "designing" | "scheduling" }.
+   * Generation runs 30-60s — these drive the on-screen progress state
+   * (never a spinner) and keep the SSE stream warm.
+   */
+  "plan_progress",
+  /** The full generated Plan. Renders on screen; NEVER spoken in full. */
+  "plan_ready",
+  /** Generation failed after its retry; the client clears progress UI. */
+  "plan_failed",
   "done",
   "error",
 ]);

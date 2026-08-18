@@ -19,7 +19,7 @@ function properties(name: string): Record<string, SchemaProperty> {
   return (tool(name).input_schema.properties ?? {}) as Record<string, SchemaProperty>;
 }
 
-test("exactly the six specified tools, snake_case, unique", () => {
+test("exactly the specified tools, snake_case, unique", () => {
   const names = OTTO_TOOLS.map((t) => t.name);
   assert.deepEqual(names, [
     "create_task",
@@ -29,6 +29,7 @@ test("exactly the six specified tools, snake_case, unique", () => {
     "save_memory",
     "propose_calendar_event",
     "propose_calendar_move",
+    "generate_plan",
     "draft_message",
   ]);
   assert.equal(new Set(names).size, names.length);
@@ -69,6 +70,19 @@ test("the spec's product rules are stated where the model reads them", () => {
   assert.match(tool("draft_message").description ?? "", /nothing is sent/i);
   assert.match(tool("propose_calendar_event").description ?? "", /NEVER claim/i);
   assert.match(tool("propose_calendar_move").description ?? "", /NEVER claim/i);
+  // The generation UX contract rides in the description: interview first,
+  // acknowledge before the wait, summarize under 60 words, never read the
+  // plan aloud, never promise a body outcome by a date.
+  assert.match(tool("generate_plan").description ?? "", /interview FIRST/);
+  assert.match(tool("generate_plan").description ?? "", /Give me a minute/);
+  assert.match(tool("generate_plan").description ?? "", /under\s+.?60 words/);
+  assert.match(tool("generate_plan").description ?? "", /NEVER read the plan/);
+  assert.match(tool("generate_plan").description ?? "", /never promise a body outcome/i);
+  assert.deepEqual(properties("generate_plan").domain?.enum, [
+    "fitness",
+    "productivity",
+    "learning",
+  ]);
 });
 
 test("nothing dynamic can leak into the cached prefix", () => {
