@@ -301,6 +301,21 @@ actor VoiceLoop {
         }
     }
 
+    /// Plays one cached guidance clip through the speaker pipeline — the
+    /// guided session's zero-latency vocabulary. No state churn: guidance
+    /// owns the audio while a session runs.
+    func playClip(_ clip: CachedClip) async {
+        do {
+            let components = try await ensureComponents()
+            try await components.session.start()
+        } catch {
+            return
+        }
+        if let speaker {
+            try? await speaker.speak(clip: clip)
+        }
+    }
+
     func setBargeThreshold(_ db: Float) {
         bargeThresholdDb = db
     }

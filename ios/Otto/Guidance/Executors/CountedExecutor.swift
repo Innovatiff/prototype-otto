@@ -99,7 +99,10 @@ actor CountedExecutor: StepExecutor {
     }
 
     /// The rest timer ran out ("Time." already played) — call the next set.
+    /// The guard drops a late signal from a timer that was already
+    /// cancelled by "done"-during-rest.
     private func restFinished() async {
+        guard rest != nil else { return }
         rest = nil
         await output.speak(GuidancePhrases.setLine(current: currentSet, total: totalSets))
     }

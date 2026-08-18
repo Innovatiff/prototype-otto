@@ -42,8 +42,9 @@ protocol GuidanceOutputting: Sendable {
 
 /// One executor per step type. Same protocol, different completion
 /// behavior. Executors DRIVE the GuidanceSession via the conductor — they
-/// never own session state.
-protocol StepExecutor: Sendable {
+/// never own session state. AnyObject so the conductor can identity-check
+/// that a completion still belongs to the current step.
+protocol StepExecutor: AnyObject, Sendable {
     func begin(_ step: Step) async
     func handleVoiceCommand(_ cmd: VoiceCommand) async -> ExecutorResult
     func cancel() async
@@ -52,12 +53,17 @@ protocol StepExecutor: Sendable {
 enum StepExecutors {
     /// The runtime's dispatch: step type → executor. Steps arrive already
     /// RESOLVED (progression overrides applied) — see GuidanceMath.
-    static func make(for step: Step, output: any GuidanceOutputting) -> any StepExecutor {
+    /// `restSeconds` overrides the between-sets interval (tests).
+    static func make(
+        for step: Step,
+        output: any GuidanceOutputting,
+        restSeconds: TimeInterval? = nil
+    ) -> any StepExecutor {
         switch step.type {
         case .timed:
             return TimedExecutor(output: output)
         case .counted:
-            return CountedExecutor(output: output)
+            return CountedExecutor(output: output, restSeconds: restSeconds)
         case .checklist:
             return ChecklistExecutor(output: output)
         case .prompt:

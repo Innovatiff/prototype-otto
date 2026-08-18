@@ -4,18 +4,75 @@ import Foundation
 /// The short phrases Otto says thousands of times. Synthesized once, replayed
 /// at zero cost and near-zero latency.
 ///
-/// Scaffolded with the starter set; expands to ~200 later. Raw values are the
-/// spoken text.
+/// Raw values are the spoken text. The guidance runtime lives on these:
+/// every repeated phrase in a session is a clip, so mid-workout guidance is
+/// instant, free, and works with no signal. Adding a case re-renders the
+/// cache on next launch (the manifest pins the phrase set).
 enum CachedClip: String, CaseIterable, Sendable {
+    // Conversation
     case acknowledged = "Understood."
     case working = "One moment."
     case listening = "Go ahead."
     case gotIt = "Got that."
-    case tenSeconds = "Ten seconds."
-    case timeUp = "Time."
-    case nextStep = "Next step."
     case notSure = "I didn't catch that."
     case cantHelp = "I can't do that yet."
+
+    // Session lifecycle
+    case letsGo = "Let's go."
+    case firstUp = "First up."
+    case sessionDone = "That's the session. Nice work."
+    case stoppedEarly = "Stopped. I saved where you got to."
+    case paused = "Paused."
+    case resumed = "Back at it."
+    case pickingUp = "Picking up where you left off."
+
+    // Steps
+    case nextStep = "Next step."
+    case lastStep = "Last step."
+    case stepDone = "Step done."
+    case skipped = "Skipped."
+    case goingBack = "Going back one."
+    case firstStepAlready = "This is the first step."
+
+    // Sets and reps
+    case nextSet = "Next set."
+    case lastOne = "Last one."
+    case setDone = "Set done."
+    case halfway = "Halfway."
+    case nice = "Nice."
+    case goodWork = "Good work."
+    case strongFinish = "Strong finish."
+
+    // Timers and rests
+    case tenSeconds = "Ten seconds."
+    case timeUp = "Time."
+    case thirtySeconds = "Thirty seconds."
+    case oneMinuteLeft = "One minute left."
+    case halfwayThere = "Halfway there."
+    case timerRunning = "Timer's running."
+    case rest = "Rest."
+    case restOver = "Rest over."
+    case stillResting = "Still resting."
+    case timerPaused = "Timer paused."
+
+    // Checklists
+    case checked = "Checked."
+    case allDone = "All done."
+    case nextItem = "Next item."
+
+    // Logging
+    case logged = "Logged."
+    case noted = "Noted."
+
+    // Off-script bridge (Step 6)
+    case oneSec = "One sec."
+    case backToIt = "Back to it."
+
+    // Edges
+    case sayDoneWhenReady = "Say done when you're ready."
+    case noTimerHere = "No timer on this one."
+    case stillHere = "Still here."
+    case readyWhenYouAre = "Ready when you are."
 }
 
 /// Pre-rendered clip storage and playback.

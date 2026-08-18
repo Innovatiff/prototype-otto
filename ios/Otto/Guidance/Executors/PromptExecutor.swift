@@ -26,7 +26,7 @@ actor PromptExecutor: StepExecutor {
             return .handled
         case .timeLeft:
             // Nothing is counting; saying so beats silence.
-            await output.speak("No timer on this one.")
+            await output.play(.noTimerHere)
             return .handled
         case .pause, .resume, .skip, .back, .stop, .logValue:
             return .passToSession

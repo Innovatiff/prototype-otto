@@ -5,6 +5,17 @@ import Foundation
 /// comes from the Plan unchanged.
 enum GuidancePhrases {
 
+    /// "Upper A. 6 steps, about 45 minutes."
+    static func sessionIntro(title: String, stepCount: Int, minutes: Int) -> String {
+        let steps = stepCount == 1 ? "1 step" : "\(stepCount) steps"
+        return "\(title). \(steps), about \(minutes) minutes."
+    }
+
+    /// "Upper A, picking up at step 4 of 6."
+    static func resumeIntro(title: String, stepNumber: Int, total: Int) -> String {
+        "\(title), picking up at step \(stepNumber) of \(total)."
+    }
+
     /// "3 sets of 8 at 20 kilos." / "8 reps." — nil when the target has
     /// nothing announceable (timers announce themselves).
     static func targetLine(_ target: StepTarget?) -> String? {
