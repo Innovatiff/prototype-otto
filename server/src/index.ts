@@ -13,6 +13,7 @@ import { requireAuth } from "./middleware/auth.js";
 import { briefRouter } from "./routes/brief.js";
 import { converseRouter } from "./routes/converse.js";
 import { memoryRouter } from "./routes/memory.js";
+import { plansRouter } from "./routes/plans.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { loadSecrets } from "./secrets/index.js";
 
@@ -28,6 +29,7 @@ app.use("/converse", requireAuth, converseRouter);
 app.use("/brief", requireAuth, briefRouter);
 app.use("/tasks", requireAuth, tasksRouter);
 app.use("/memory", requireAuth, memoryRouter);
+app.use("/plans", requireAuth, plansRouter);
 
 // JSON 404 for anything unmatched, then the typed error handler — order matters.
 app.use((_req: Request, res: Response): void => {

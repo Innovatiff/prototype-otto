@@ -19,6 +19,7 @@ struct ConversationView: View {
             statusCaption
             draftCard
             calendarCard
+            planScheduleCard
             controlBar
         }
         .background(OttoTheme.background.ignoresSafeArea())
@@ -303,6 +304,75 @@ struct ConversationView: View {
                         model.confirmCalendarTapped()
                     } label: {
                         Text("Confirm")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(Color.black)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 8)
+                            .background(Color.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(14)
+            .background(
+                OttoTheme.surface,
+                in: RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
+                    .stroke(OttoTheme.hairline, lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 10)
+        }
+    }
+
+    // MARK: - Plan scheduling confirmation card
+
+    /// Inline verification: exactly what will be added, confirmed by tap or
+    /// voice. Every write is verified by read-back before success is spoken.
+    @ViewBuilder
+    private var planScheduleCard: some View {
+        if model.planScheduleStage == .offering {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ADD TO CALENDAR")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(OttoTheme.textTertiary)
+                Text("\(model.planScheduleDrafts.count) sessions")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(OttoTheme.textPrimary)
+                ForEach(model.planScheduleDrafts.prefix(3)) { item in
+                    HStack(spacing: 8) {
+                        Text(
+                            item.draft.startsAt.formatted(
+                                .dateTime.weekday(.abbreviated).month(.abbreviated).day()
+                                    .hour().minute()
+                            )
+                        )
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(OttoTheme.textSecondary)
+                        Text(item.draft.title)
+                            .font(.caption)
+                            .foregroundStyle(OttoTheme.textPrimary)
+                            .lineLimit(1)
+                    }
+                }
+                if model.planScheduleDrafts.count > 3 {
+                    Text("+ \(model.planScheduleDrafts.count - 3) more")
+                        .font(.caption2)
+                        .foregroundStyle(OttoTheme.textTertiary)
+                }
+                HStack {
+                    Button("Not now") {
+                        model.cancelPlanScheduleTapped()
+                    }
+                    .font(.callout)
+                    .foregroundStyle(OttoTheme.textSecondary)
+                    Spacer()
+                    Button {
+                        model.confirmPlanScheduleTapped()
+                    } label: {
+                        Text("Add all")
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(Color.black)
                             .padding(.horizontal, 18)

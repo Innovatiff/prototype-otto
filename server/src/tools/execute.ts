@@ -428,7 +428,9 @@ async function generatePlanTool(input: PlanConstraints, ctx: ToolContext): Promi
         speak:
           "Say a summary from these facts in under 60 words, honest about " +
           "what the timeframe delivers. The full plan is already on their " +
-          "screen — never read the plan itself aloud.",
+          "screen — never read the plan itself aloud. Do not offer to put " +
+          "sessions on the calendar; the device makes that offer itself " +
+          "right after you finish.",
         ...(generated.riskSignals.length > 0
           ? {
               riskNote:

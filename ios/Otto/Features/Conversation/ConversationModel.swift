@@ -96,6 +96,22 @@ final class ConversationModel {
     /// voice speaks only a summary. Never read aloud.
     private(set) var planCard: Plan?
 
+    // MARK: - Plan calendar scheduling
+
+    /// After a NEW plan lands and Otto's summary finishes, the device offers
+    /// to put the sessions on the calendar — a confirmation card plus a
+    /// spoken yes/no, writes verified by read-back, ids reported to the
+    /// server so adaptation can move them.
+    enum PlanScheduleStage: Equatable {
+        case idle
+        case offering
+    }
+
+    private(set) var planScheduleStage: PlanScheduleStage = .idle
+    private(set) var planScheduleDrafts: [PlanScheduling.SessionEvent] = []
+    private var planToSchedule: Plan?
+    private var pendingPlanOffer: Plan?
+
     // MARK: - The morning brief
 
     /// The structured half of the brief, rendered while Otto speaks.
@@ -358,6 +374,8 @@ final class ConversationModel {
                 Task { await self.beginDraftFlow() }
             } else if pendingCalendarProposal != nil {
                 Task { await self.beginCalendarFlow() }
+            } else if pendingPlanOffer != nil {
+                Task { await self.beginPlanScheduleFlow() }
             }
         case .draft(let recipientName, let body):
             pendingDraft = (recipientName, body)
@@ -374,6 +392,11 @@ final class ConversationModel {
         case .planReady(let plan):
             planPhase = .idle
             withAnimation(.snappy) { planCard = plan }
+            // Offer calendar scheduling for NEW plans only — an adapted
+            // version may already be scheduled (its links carried over).
+            if plan.meta.version == 1 {
+                pendingPlanOffer = plan
+            }
         case .planFailed:
             planPhase = .idle
         case .task(let task):
@@ -489,6 +512,8 @@ final class ConversationModel {
             await handleDraftReply(text)
         } else if calendarStage != .idle {
             await handleCalendarReply(text)
+        } else if planScheduleStage != .idle {
+            await handlePlanScheduleReply(text)
         }
     }
 
@@ -655,6 +680,118 @@ final class ConversationModel {
                 await voiceLoop.announce("The move failed. \(error.localizedDescription)")
             }
         }
+    }
+
+    // MARK: - Plan scheduling flow (offer → confirm → write → READ BACK)
+
+    private func beginPlanScheduleFlow() async {
+        guard let plan = pendingPlanOffer else { return }
+        pendingPlanOffer = nil
+        let drafts = PlanScheduling.drafts(for: plan, now: Date())
+        guard !drafts.isEmpty else { return }
+        planToSchedule = plan
+        planScheduleDrafts = drafts
+        withAnimation(.snappy) { planScheduleStage = .offering }
+        await voiceLoop.armUtteranceCapture()
+        await voiceLoop.announce(
+            "Want these on your calendar? \(drafts.count) sessions over the plan."
+        )
+    }
+
+    private func handlePlanScheduleReply(_ text: String) async {
+        let reply = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: .punctuationCharacters)
+        guard planScheduleStage == .offering else { return }
+        if Self.affirmatives.contains(reply) {
+            let plan = planToSchedule
+            let drafts = planScheduleDrafts
+            resetPlanScheduleFlow()
+            if let plan {
+                await performPlanScheduling(plan: plan, drafts: drafts)
+            }
+        } else {
+            // Anything that isn't a yes leaves the calendar alone.
+            resetPlanScheduleFlow()
+            await voiceLoop.announce("Okay — calendar untouched.")
+        }
+    }
+
+    /// Tapped confirmation on the scheduling card.
+    func confirmPlanScheduleTapped() {
+        guard planScheduleStage == .offering, let plan = planToSchedule else { return }
+        let drafts = planScheduleDrafts
+        resetPlanScheduleFlow()
+        Task { await self.performPlanScheduling(plan: plan, drafts: drafts) }
+    }
+
+    func cancelPlanScheduleTapped() {
+        resetPlanScheduleFlow()
+        appendNotice("Sessions not added to the calendar.")
+    }
+
+    /// Writes every draft via EventKit, VERIFIES each by reading it back,
+    /// speaks only from read-back values, then reports the verified ids to
+    /// the server so they live on the plan.
+    private func performPlanScheduling(plan: Plan, drafts: [PlanScheduling.SessionEvent]) async {
+        var verified: [PlanCalendarEvent] = []
+        var firstReadBack: CalendarEvent?
+        var failures = 0
+
+        for item in drafts {
+            do {
+                let id = try await calendarService.createEvent(item.draft)
+                if let readBack = try await calendarService.event(withId: id),
+                   abs(readBack.startsAt.timeIntervalSince(item.draft.startsAt)) < 60 {
+                    verified.append(
+                        PlanCalendarEvent(
+                            sessionId: item.sessionId,
+                            dayOffset: item.dayOffset,
+                            eventId: id
+                        )
+                    )
+                    if firstReadBack == nil { firstReadBack = readBack }
+                } else {
+                    failures += 1
+                }
+            } catch {
+                // Denied permission fails the first write; don't hammer the
+                // remaining drafts against the same wall.
+                if verified.isEmpty {
+                    appendNotice(error.localizedDescription)
+                    await voiceLoop.announce("I can't reach the calendar, so nothing was added.")
+                    return
+                }
+                failures += 1
+            }
+        }
+
+        if let first = firstReadBack, failures == 0 {
+            await voiceLoop.announce(
+                "Done. \(verified.count) sessions on the calendar. " +
+                    "First one \(Self.speakable(first.startsAt))."
+            )
+        } else if firstReadBack != nil {
+            await voiceLoop.announce(
+                "\(verified.count) of \(drafts.count) sessions made it. Check the calendar."
+            )
+        } else {
+            await voiceLoop.announce("The writes didn't take. The calendar is unchanged.")
+            return
+        }
+
+        guard let client = makeClient() else { return }
+        do {
+            try await client.storePlanCalendarEvents(planId: plan.id, events: verified)
+        } catch {
+            appendNotice("Couldn't record the calendar links: \(error.localizedDescription)")
+        }
+    }
+
+    private func resetPlanScheduleFlow() {
+        withAnimation(.snappy) { planScheduleStage = .idle }
+        planScheduleDrafts = []
+        planToSchedule = nil
+        Task { await self.voiceLoop.disarmUtteranceCapture() }
     }
 
     // MARK: - Brief flow

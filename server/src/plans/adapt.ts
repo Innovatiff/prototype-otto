@@ -113,12 +113,14 @@ export function applyPatch(input: {
   // Schedule ops, addressed by original coordinates.
   interface Tracked {
     key: string;
+    originalDayOffset: number;
     removed: boolean;
     value: ScheduledSession;
   }
   const keyOf = (sessionId: string, dayOffset: number): string => `${sessionId}@${dayOffset}`;
   const tracked: Tracked[] = plan.schedule.map((entry) => ({
     key: keyOf(entry.sessionId, entry.dayOffset),
+    originalDayOffset: entry.dayOffset,
     removed: false,
     value: {
       ...entry,
@@ -162,6 +164,19 @@ export function applyPatch(input: {
   const referenced = new Set(schedule.map((entry) => entry.sessionId));
   const keptSessions = sessions.filter((session) => referenced.has(session.id));
 
+  // Calendar links survive only where the occurrence is UNTOUCHED (not
+  // removed, not shifted): a stale link would claim an event describes a
+  // session it no longer matches. Dropped links leave real events on the
+  // calendar for the user; the guidance runtime reconciles those later.
+  const untouched = new Set(
+    tracked
+      .filter((t) => !t.removed && t.value.dayOffset === t.originalDayOffset)
+      .map((t) => t.key),
+  );
+  const carriedLinks = (plan.calendarEvents ?? []).filter((link) =>
+    untouched.has(keyOf(link.sessionId, link.dayOffset)),
+  );
+
   if (errors.length > 0) {
     return { ok: false, errors };
   }
@@ -203,6 +218,7 @@ export function applyPatch(input: {
       schedule,
       status: "active",
       supersedes: plan.id,
+      ...(carriedLinks.length > 0 ? { calendarEvents: carriedLinks } : {}),
       createdAt: input.now.toISOString(),
     }),
   };

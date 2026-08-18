@@ -21,6 +21,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
     var sessions: [Session]
     var status: PlanStatus
     var supersedes: String?
+    var calendarEvents: [PlanCalendarEvent]?
     var createdAt: Date
 
     init(
@@ -32,6 +33,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         sessions: [Session],
         status: PlanStatus,
         supersedes: String? = nil,
+        calendarEvents: [PlanCalendarEvent]? = nil,
         createdAt: Date
     ) {
         self.id = id
@@ -42,6 +44,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         self.sessions = sessions
         self.status = status
         self.supersedes = supersedes
+        self.calendarEvents = calendarEvents
         self.createdAt = createdAt
     }
 
@@ -54,6 +57,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         case sessions
         case status
         case supersedes
+        case calendarEvents
         case createdAt
     }
 
@@ -67,6 +71,7 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         self.sessions = try container.decode([Session].self, forKey: .sessions)
         self.status = try container.decode(PlanStatus.self, forKey: .status)
         self.supersedes = try container.decodeIfPresent(String.self, forKey: .supersedes)
+        self.calendarEvents = try container.decodeIfPresent([PlanCalendarEvent].self, forKey: .calendarEvents)
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
     }
 
@@ -80,7 +85,68 @@ struct Plan: Codable, Hashable, Sendable, Identifiable {
         try container.encode(self.sessions, forKey: .sessions)
         try container.encode(self.status, forKey: .status)
         try container.encodeIfPresent(self.supersedes, forKey: .supersedes)
+        try container.encodeIfPresent(self.calendarEvents, forKey: .calendarEvents)
         try container.encode(self.createdAt, forKey: .createdAt)
+    }
+}
+
+struct PlanCalendarEvent: Codable, Hashable, Sendable {
+    var sessionId: String
+    var dayOffset: Int
+    var eventId: String
+
+    init(
+        sessionId: String,
+        dayOffset: Int,
+        eventId: String
+    ) {
+        self.sessionId = sessionId
+        self.dayOffset = dayOffset
+        self.eventId = eventId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionId
+        case dayOffset
+        case eventId
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.sessionId = try container.decode(String.self, forKey: .sessionId)
+        self.dayOffset = try container.decode(Int.self, forKey: .dayOffset)
+        self.eventId = try container.decode(String.self, forKey: .eventId)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.sessionId, forKey: .sessionId)
+        try container.encode(self.dayOffset, forKey: .dayOffset)
+        try container.encode(self.eventId, forKey: .eventId)
+    }
+}
+
+struct PlanCalendarEventsRequest: Codable, Hashable, Sendable {
+    var events: [PlanCalendarEvent]
+
+    init(
+        events: [PlanCalendarEvent]
+    ) {
+        self.events = events
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case events
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.events = try container.decode([PlanCalendarEvent].self, forKey: .events)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.events, forKey: .events)
     }
 }
 

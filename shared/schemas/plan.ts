@@ -96,6 +96,19 @@ export type PlanMeta = z.infer<typeof PlanMeta>;
 export const PlanStatus = z.enum(["active", "superseded"]);
 export type PlanStatus = z.infer<typeof PlanStatus>;
 
+/**
+ * Links one scheduled occurrence to the calendar event created for it.
+ * Written by the server after the DEVICE has created the event via EventKit
+ * and verified it by read-back — so adaptation can move real events later.
+ */
+export const PlanCalendarEvent = z.object({
+  sessionId: zId,
+  dayOffset: z.number().int(),
+  /** The EventKit event identifier from the verified write. */
+  eventId: z.string().min(1),
+});
+export type PlanCalendarEvent = z.infer<typeof PlanCalendarEvent>;
+
 /** A structured, multi-week program Otto generates and guides the user through. */
 export const Plan = z.object({
   id: zId,
@@ -106,6 +119,14 @@ export const Plan = z.object({
   sessions: z.array(Session),
   status: PlanStatus,
   supersedes: zId.optional(),
+  /** Verified calendar links; absent until the user schedules the plan. */
+  calendarEvents: z.array(PlanCalendarEvent).optional(),
   createdAt: isoDateTime,
 });
 export type Plan = z.infer<typeof Plan>;
+
+/** POST /plans/:planId/calendar-events — the device reports verified writes. */
+export const PlanCalendarEventsRequest = z.object({
+  events: z.array(PlanCalendarEvent).min(1).max(200),
+});
+export type PlanCalendarEventsRequest = z.infer<typeof PlanCalendarEventsRequest>;
