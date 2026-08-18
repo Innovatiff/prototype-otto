@@ -1,0 +1,67 @@
+import Foundation
+
+/// The fixed guidance vocabulary, classified ON DEVICE (Step 5 builds the
+/// classifier; executors consume the result). Never a network round trip.
+enum VoiceCommand: Equatable, Sendable {
+    /// next / done / finished — complete the current unit of work.
+    case next
+    /// repeat / say that again.
+    case repeatCue
+    /// how much longer / time left.
+    case timeLeft
+    case skip
+    case pause
+    case resume
+    case back
+    /// I'm done / stop — end the session.
+    case stop
+    /// "used 135 pounds" — the raw value, logged by the session.
+    case logValue(String)
+}
+
+/// What an executor did with a command.
+enum ExecutorResult: Equatable, Sendable {
+    /// Consumed — nothing further to do.
+    case handled
+    /// The step is finished; the session advances.
+    case completed
+    /// A session-level command (skip, back, stop, pause bookkeeping,
+    /// logging) — the conductor acts on it.
+    case passToSession
+}
+
+/// How executors reach the world: verbatim speech, cached clips, and the
+/// auto-advance signal (timers complete without a voice command). Step 3
+/// wires this to the Speaker; tests record it.
+protocol GuidanceOutputting: Sendable {
+    func speak(_ text: String) async
+    func play(_ clip: CachedClip) async
+    /// An executor finished on its own (timer at zero) — advance the step.
+    func stepCompleted() async
+}
+
+/// One executor per step type. Same protocol, different completion
+/// behavior. Executors DRIVE the GuidanceSession via the conductor — they
+/// never own session state.
+protocol StepExecutor: Sendable {
+    func begin(_ step: Step) async
+    func handleVoiceCommand(_ cmd: VoiceCommand) async -> ExecutorResult
+    func cancel() async
+}
+
+enum StepExecutors {
+    /// The runtime's dispatch: step type → executor. Steps arrive already
+    /// RESOLVED (progression overrides applied) — see GuidanceMath.
+    static func make(for step: Step, output: any GuidanceOutputting) -> any StepExecutor {
+        switch step.type {
+        case .timed:
+            return TimedExecutor(output: output)
+        case .counted:
+            return CountedExecutor(output: output)
+        case .checklist:
+            return ChecklistExecutor(output: output)
+        case .prompt:
+            return PromptExecutor(output: output)
+        }
+    }
+}
