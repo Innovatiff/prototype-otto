@@ -18,6 +18,7 @@ struct ConversationView: View {
             stage
             statusCaption
             draftCard
+            calendarCard
             controlBar
         }
         .background(OttoTheme.background.ignoresSafeArea())
@@ -208,6 +209,80 @@ struct ConversationView: View {
                         model.confirmDraftTapped()
                     } label: {
                         Text("Send…")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(Color.black)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 8)
+                            .background(Color.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(14)
+            .background(
+                OttoTheme.surface,
+                in: RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
+                    .stroke(OttoTheme.hairline, lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 10)
+        }
+    }
+
+    // MARK: - Calendar confirmation card
+
+    /// Visible while a calendar change awaits confirmation — the tapped
+    /// alternative to saying "yes". The write is verified by read-back.
+    @ViewBuilder
+    private var calendarCard: some View {
+        if case .confirming(let change) = model.calendarStage {
+            VStack(alignment: .leading, spacing: 8) {
+                switch change {
+                case .create(let draft):
+                    Text("ADD TO CALENDAR")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(OttoTheme.textTertiary)
+                    Text(draft.title)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(OttoTheme.textPrimary)
+                    Text(
+                        "\(draft.startsAt.formatted(.dateTime.weekday(.wide).month().day().hour().minute())) – \(draft.endsAt.formatted(date: .omitted, time: .shortened))"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(OttoTheme.textSecondary)
+                    if let location = draft.location {
+                        Text(location)
+                            .font(.caption)
+                            .foregroundStyle(OttoTheme.textTertiary)
+                    }
+                case .move(let original, let newStart, _):
+                    Text("MOVE EVENT")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(OttoTheme.textTertiary)
+                    Text(original.title)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(OttoTheme.textPrimary)
+                    Text("from  \(original.startsAt.formatted(.dateTime.weekday().month().day().hour().minute()))")
+                        .font(.caption)
+                        .foregroundStyle(OttoTheme.textSecondary)
+                    Text("to  \(newStart.formatted(.dateTime.weekday().month().day().hour().minute()))")
+                        .font(.caption)
+                        .foregroundStyle(OttoTheme.textPrimary)
+                }
+                HStack {
+                    Button("Cancel") {
+                        model.cancelCalendarTapped()
+                    }
+                    .font(.callout)
+                    .foregroundStyle(OttoTheme.textSecondary)
+                    Spacer()
+                    Button {
+                        model.confirmCalendarTapped()
+                    } label: {
+                        Text("Confirm")
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(Color.black)
                             .padding(.horizontal, 18)

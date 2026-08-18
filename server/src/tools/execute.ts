@@ -60,6 +60,20 @@ export const DraftMessageInput = z.object({
   body: z.string().min(1).max(2000),
 });
 
+export const ProposeCalendarEventInput = z.object({
+  title: z.string().min(1).max(200),
+  startsAt: isoDateTime,
+  endsAt: isoDateTime,
+  location: z.string().min(1).max(200).optional(),
+  notes: z.string().max(1000).optional(),
+});
+
+export const ProposeCalendarMoveInput = z.object({
+  eventTitle: z.string().min(1).max(200),
+  newStartsAt: isoDateTime,
+  newEndsAt: isoDateTime.optional(),
+});
+
 // ── Fuzzy item matching (pure, tested) ──────────────────────────────
 
 /** Lowercase, punctuation stripped, articles dropped, whitespace collapsed. */
@@ -342,6 +356,47 @@ async function saveMemory(input: z.infer<typeof SaveMemoryInput>, ctx: ToolConte
   return { result: JSON.stringify({ memoryId: memory.id, category: memory.category }) };
 }
 
+function proposeCalendarEvent(
+  input: z.infer<typeof ProposeCalendarEventInput>,
+  ctx: ToolContext,
+): ToolExecution {
+  // Nothing is written here. The device confirms, writes via EventKit, and
+  // verifies by read-back; the model must not claim success.
+  ctx.emit({
+    type: "calendar_proposal",
+    data: { kind: "create", draft: input },
+  });
+  return {
+    result: JSON.stringify({
+      proposed: true,
+      awaitingConfirmation: true,
+      note: "Confirmation card shown on device. Do not claim the event was created.",
+    }),
+  };
+}
+
+function proposeCalendarMove(
+  input: z.infer<typeof ProposeCalendarMoveInput>,
+  ctx: ToolContext,
+): ToolExecution {
+  ctx.emit({
+    type: "calendar_proposal",
+    data: {
+      kind: "move",
+      eventTitle: input.eventTitle,
+      newStartsAt: input.newStartsAt,
+      ...(input.newEndsAt !== undefined ? { newEndsAt: input.newEndsAt } : {}),
+    },
+  });
+  return {
+    result: JSON.stringify({
+      proposed: true,
+      awaitingConfirmation: true,
+      note: "Confirmation card shown on device. Do not claim the move happened.",
+    }),
+  };
+}
+
 function draftMessage(input: z.infer<typeof DraftMessageInput>, ctx: ToolContext): ToolExecution {
   // Nothing persists and nothing sends — the client reads the draft back
   // aloud and hands off to the system compose sheet.
@@ -387,6 +442,18 @@ export async function executeToolUse(
       case "draft_message": {
         const parsed = DraftMessageInput.safeParse(rawInput);
         return parsed.success ? draftMessage(parsed.data, ctx) : failure("Invalid draft_message input.");
+      }
+      case "propose_calendar_event": {
+        const parsed = ProposeCalendarEventInput.safeParse(rawInput);
+        return parsed.success
+          ? proposeCalendarEvent(parsed.data, ctx)
+          : failure("Invalid propose_calendar_event input (datetimes need offsets).");
+      }
+      case "propose_calendar_move": {
+        const parsed = ProposeCalendarMoveInput.safeParse(rawInput);
+        return parsed.success
+          ? proposeCalendarMove(parsed.data, ctx)
+          : failure("Invalid propose_calendar_move input (datetimes need offsets).");
       }
       default:
         return failure(`Unknown tool: ${name}`);

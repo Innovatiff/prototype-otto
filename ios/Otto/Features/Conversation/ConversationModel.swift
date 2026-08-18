@@ -65,6 +65,22 @@ final class ConversationModel {
     private var pendingDraft: (recipientName: String, body: String)?
     private let contacts = ContactResolver()
 
+    // MARK: - Calendar confirmation
+
+    /// A resolved calendar change awaiting the user's confirmation.
+    enum ProposedCalendarChange: Equatable {
+        case create(EventDraft)
+        case move(original: CalendarEvent, newStart: Date, newEnd: Date)
+    }
+
+    enum CalendarStage: Equatable {
+        case idle
+        case confirming(ProposedCalendarChange)
+    }
+
+    private(set) var calendarStage: CalendarStage = .idle
+    private var pendingCalendarProposal: CalendarProposal?
+
     // MARK: - The morning brief
 
     /// The structured half of the brief, rendered while Otto speaks.
@@ -318,11 +334,15 @@ final class ConversationModel {
             if pendingDraft != nil {
                 // Start the read-back flow only after Otto's own words finish.
                 Task { await self.beginDraftFlow() }
+            } else if pendingCalendarProposal != nil {
+                Task { await self.beginCalendarFlow() }
             }
         case .draft(let recipientName, let body):
             pendingDraft = (recipientName, body)
+        case .calendarProposal(let proposal):
+            pendingCalendarProposal = proposal
         case .capturedUtterance(let text):
-            Task { await self.handleDraftReply(text) }
+            Task { await self.handleCapturedReply(text) }
         case .briefRequested:
             Task { await self.runBrief() }
         case .task(let task):
@@ -432,6 +452,15 @@ final class ConversationModel {
     ]
     private static let ordinals = ["first", "second", "third", "fourth", "fifth"]
 
+    /// Routes a captured utterance to whichever confirmation flow is live.
+    private func handleCapturedReply(_ text: String) async {
+        if draftStage != .idle {
+            await handleDraftReply(text)
+        } else if calendarStage != .idle {
+            await handleCalendarReply(text)
+        }
+    }
+
     /// A spoken (captured) or typed reply while the draft flow is active.
     private func handleDraftReply(_ text: String) async {
         let reply = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -487,6 +516,114 @@ final class ConversationModel {
         draftStage = .idle
         pendingDraft = nil
         Task { await self.voiceLoop.disarmUtteranceCapture() }
+    }
+
+    // MARK: - Calendar flow (propose → confirm → write → READ BACK)
+
+    private static func speakable(_ date: Date) -> String {
+        date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().hour().minute())
+    }
+
+    private func beginCalendarFlow() async {
+        guard let proposal = pendingCalendarProposal else { return }
+        pendingCalendarProposal = nil
+
+        switch proposal {
+        case .create(let draft):
+            calendarStage = .confirming(.create(draft))
+            await voiceLoop.armUtteranceCapture()
+            await voiceLoop.announce(
+                "Add \(draft.title), \(Self.speakable(draft.startsAt)). Confirm?"
+            )
+        case .move(let eventTitle, let newStartsAt, let newEndsAt):
+            // Resolve the named event on-device, soonest match first.
+            let searchStart = Date().addingTimeInterval(-3600)
+            let searchEnd = Date().addingTimeInterval(45 * 86_400)
+            let events: [CalendarEvent]
+            do {
+                events = try await calendarService.events(from: searchStart, to: searchEnd)
+            } catch {
+                appendNotice(error.localizedDescription)
+                await voiceLoop.announce("I can't reach the calendar to find it.")
+                return
+            }
+            guard let original = CalendarService.matchEvent(events, title: eventTitle) else {
+                await voiceLoop.announce("I don't see \(eventTitle) on the calendar.")
+                return
+            }
+            let duration = original.endsAt.timeIntervalSince(original.startsAt)
+            let newEnd = newEndsAt ?? newStartsAt.addingTimeInterval(max(60, duration))
+            calendarStage = .confirming(.move(original: original, newStart: newStartsAt, newEnd: newEnd))
+            await voiceLoop.armUtteranceCapture()
+            await voiceLoop.announce(
+                "Move \(original.title) from \(Self.speakable(original.startsAt)) " +
+                    "to \(Self.speakable(newStartsAt)). Confirm?"
+            )
+        }
+    }
+
+    private func handleCalendarReply(_ text: String) async {
+        let reply = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: .punctuationCharacters)
+        guard case .confirming(let change) = calendarStage else { return }
+        if Self.affirmatives.contains(reply) {
+            calendarStage = .idle
+            await performCalendarWrite(change)
+        } else if Self.negatives.contains(reply) {
+            calendarStage = .idle
+            await voiceLoop.announce("Cancelled. The calendar is untouched.")
+        } else {
+            calendarStage = .idle
+            await voiceLoop.announce("That wasn't a yes, so I left the calendar alone.")
+        }
+    }
+
+    /// Tapped confirmation on the calendar card.
+    func confirmCalendarTapped() {
+        if case .confirming(let change) = calendarStage {
+            calendarStage = .idle
+            Task { await self.performCalendarWrite(change) }
+        }
+    }
+
+    func cancelCalendarTapped() {
+        calendarStage = .idle
+        Task { await self.voiceLoop.disarmUtteranceCapture() }
+        appendNotice("Calendar change discarded.")
+    }
+
+    /// The write, then the READ-BACK. Success is only ever reported from
+    /// what the calendar actually returns; an unverified write is a failure.
+    private func performCalendarWrite(_ change: ProposedCalendarChange) async {
+        switch change {
+        case .create(let draft):
+            do {
+                let id = try await calendarService.createEvent(draft)
+                if let readBack = try await calendarService.event(withId: id) {
+                    await voiceLoop.announce(
+                        "Done. \(readBack.title) is on the calendar, \(Self.speakable(readBack.startsAt))."
+                    )
+                } else {
+                    await voiceLoop.announce("The write didn't take. Check the calendar.")
+                }
+            } catch {
+                await voiceLoop.announce("The calendar write failed. \(error.localizedDescription)")
+            }
+        case .move(let original, let newStart, let newEnd):
+            do {
+                try await calendarService.moveEvent(id: original.id, newStart: newStart, newEnd: newEnd)
+                if let readBack = try await calendarService.event(withId: original.id),
+                   abs(readBack.startsAt.timeIntervalSince(newStart)) < 60 {
+                    await voiceLoop.announce(
+                        "Done. \(readBack.title) is now \(Self.speakable(readBack.startsAt))."
+                    )
+                } else {
+                    await voiceLoop.announce("The move didn't take. Check the calendar.")
+                }
+            } catch {
+                await voiceLoop.announce("The move failed. \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: - Brief flow

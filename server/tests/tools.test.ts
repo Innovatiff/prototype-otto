@@ -27,6 +27,8 @@ test("exactly the six specified tools, snake_case, unique", () => {
     "update_task_items",
     "complete_task",
     "save_memory",
+    "propose_calendar_event",
+    "propose_calendar_move",
     "draft_message",
   ]);
   assert.equal(new Set(names).size, names.length);
@@ -65,6 +67,8 @@ test("the spec's product rules are stated where the model reads them", () => {
   assert.match(tool("update_task_items").description ?? "", /fuzzy/i);
   assert.match(tool("save_memory").description ?? "", /explicit/i);
   assert.match(tool("draft_message").description ?? "", /nothing is sent/i);
+  assert.match(tool("propose_calendar_event").description ?? "", /NEVER claim/i);
+  assert.match(tool("propose_calendar_move").description ?? "", /NEVER claim/i);
 });
 
 test("nothing dynamic can leak into the cached prefix", () => {

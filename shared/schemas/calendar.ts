@@ -44,3 +44,25 @@ export const Conflict = z.object({
   minutesShort: z.number().int().min(0),
 });
 export type Conflict = z.infer<typeof Conflict>;
+
+/**
+ * A calendar change the model PROPOSES. Nothing is written server-side:
+ * the client renders a confirmation card, the user confirms by voice or
+ * tap, the write goes through EventKit, and success is only ever reported
+ * after reading the event back from the calendar.
+ */
+export const CalendarProposal = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("create"),
+    draft: EventDraft,
+  }),
+  z.object({
+    kind: z.literal("move"),
+    /** The event named by the user; the client resolves it fuzzily. */
+    eventTitle: z.string().min(1),
+    newStartsAt: isoDateTime,
+    /** Absent = keep the event's current duration. */
+    newEndsAt: isoDateTime.optional(),
+  }),
+]);
+export type CalendarProposal = z.infer<typeof CalendarProposal>;

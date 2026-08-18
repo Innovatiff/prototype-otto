@@ -53,6 +53,9 @@ enum ConversationEvent: Sendable {
     /// A message draft from the server. Nothing is sent; the client reads it
     /// back aloud and hands off to the system compose sheet.
     case draft(recipientName: String, body: String)
+    /// A proposed calendar change. The model confirms, writes via EventKit,
+    /// and reports success only after read-back.
+    case calendarProposal(CalendarProposal)
     /// A final utterance claimed by an armed capture (draft confirmations)
     /// instead of becoming a server turn.
     case capturedUtterance(String)
@@ -564,6 +567,10 @@ actor VoiceLoop {
                        let recipientName = payload["recipientName"]?.stringValue,
                        let body = payload["body"]?.stringValue {
                         emit(.draft(recipientName: recipientName, body: body))
+                    }
+                case .calendarProposal:
+                    if let proposal = event.data?.decoded(as: CalendarProposal.self) {
+                        emit(.calendarProposal(proposal))
                     }
                 }
             }

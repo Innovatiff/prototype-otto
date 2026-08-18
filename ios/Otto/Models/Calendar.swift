@@ -72,6 +72,54 @@ struct CalendarEvent: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+enum CalendarProposal: Codable, Hashable, Sendable {
+    case create(draft: EventDraft)
+    case move(eventTitle: String, newStartsAt: Date, newEndsAt: Date?)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case draft
+        case eventTitle
+        case newStartsAt
+        case newEndsAt
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let discriminator = try container.decode(String.self, forKey: .kind)
+        switch discriminator {
+        case "create":
+            let draft = try container.decode(EventDraft.self, forKey: .draft)
+            self = .create(draft: draft)
+        case "move":
+            let eventTitle = try container.decode(String.self, forKey: .eventTitle)
+            let newStartsAt = try container.decode(Date.self, forKey: .newStartsAt)
+            let newEndsAt = try container.decode(Date.self, forKey: .newEndsAt)
+            self = .move(eventTitle: eventTitle, newStartsAt: newStartsAt, newEndsAt: newEndsAt)
+        default:
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind,
+                in: container,
+                debugDescription: "Unknown CalendarProposal kind \(discriminator.debugDescription)."
+            )
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .create(let draft):
+            try container.encode("create", forKey: .kind)
+            try container.encode(draft, forKey: .draft)
+        case .move(let eventTitle, let newStartsAt, let newEndsAt):
+            try container.encode("move", forKey: .kind)
+            try container.encode(eventTitle, forKey: .eventTitle)
+            try container.encode(newStartsAt, forKey: .newStartsAt)
+            try container.encode(newEndsAt, forKey: .newEndsAt)
+        }
+    }
+}
+
 struct Conflict: Codable, Hashable, Sendable {
     var eventA: CalendarEvent
     var eventB: CalendarEvent

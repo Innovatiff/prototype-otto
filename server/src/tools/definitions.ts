@@ -134,6 +134,51 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
     },
   },
   {
+    name: "propose_calendar_event",
+    description:
+      "Propose adding ONE calendar event. Nothing is written by this call: " +
+      "the user sees a confirmation card on their device, confirms by voice " +
+      "or tap, and the write happens there — verified by reading the event " +
+      "back. NEVER claim the event was created; say you've set it up for " +
+      "their confirmation. Compute concrete ISO datetimes with offset from " +
+      "the current date/time in your context.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        startsAt: {
+          type: "string",
+          description: "ISO 8601 with offset, e.g. 2026-03-06T14:00:00-05:00.",
+        },
+        endsAt: { type: "string", description: "ISO 8601 with offset." },
+        location: { type: "string" },
+        notes: { type: "string" },
+      },
+      required: ["title", "startsAt", "endsAt"],
+    },
+  },
+  {
+    name: "propose_calendar_move",
+    description:
+      "Propose moving an existing calendar event the user named. Nothing is " +
+      "written by this call: the device resolves the event by title, shows a " +
+      "confirmation card, and writes only on the user's confirmation — " +
+      "verified by read-back. NEVER claim the move happened. Omit newEndsAt " +
+      "to keep the event's current duration.",
+    input_schema: {
+      type: "object",
+      properties: {
+        eventTitle: {
+          type: "string",
+          description: "The event as the user said it, e.g. 'dentist appointment'.",
+        },
+        newStartsAt: { type: "string", description: "ISO 8601 with offset." },
+        newEndsAt: { type: "string", description: "ISO 8601 with offset; omit to keep duration." },
+      },
+      required: ["eventTitle", "newStartsAt"],
+    },
+  },
+  {
     name: "draft_message",
     description:
       "Produce a message draft for the user to send. Returns the draft only " +

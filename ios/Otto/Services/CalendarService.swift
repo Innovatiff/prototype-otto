@@ -72,6 +72,47 @@ final class CalendarService {
 
     // MARK: - Write
 
+    /// Moves an existing event. Callers verify by reading it back.
+    func moveEvent(id: String, newStart: Date, newEnd: Date) async throws {
+        try await ensureAccess()
+        guard let event = store.event(withIdentifier: id) else {
+            throw CalendarServiceError.eventNotFound
+        }
+        event.startDate = newStart
+        event.endDate = newEnd
+        do {
+            try store.save(event, span: .thisEvent, commit: true)
+        } catch {
+            throw CalendarServiceError.saveFailed
+        }
+    }
+
+    /// Fuzzy title match against events, soonest first — "dentist" finds
+    /// "Dentist appointment". Deterministic; nil when nothing plausibly
+    /// matches.
+    nonisolated static func matchEvent(_ events: [CalendarEvent], title: String) -> CalendarEvent? {
+        let needle = normalizedTitle(title)
+        guard !needle.isEmpty else { return nil }
+        let sorted = events.sorted { $0.startsAt < $1.startsAt }
+        if let exact = sorted.first(where: { normalizedTitle($0.title) == needle }) {
+            return exact
+        }
+        return sorted.first { candidate in
+            let haystack = normalizedTitle(candidate.title)
+            return haystack.contains(needle) || needle.contains(haystack)
+        }
+    }
+
+    private nonisolated static func normalizedTitle(_ text: String) -> String {
+        text.lowercased()
+            .replacingOccurrences(of: "appointment", with: "")
+            .components(separatedBy: CharacterSet.alphanumerics.union(.whitespaces).inverted)
+            .joined()
+            .split(separator: " ")
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+    }
+
     /// Creates the event and returns its identifier. Callers verify by
     /// reading the event back — never assume a write landed.
     func createEvent(_ draft: EventDraft) async throws -> String {

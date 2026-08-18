@@ -24,6 +24,8 @@ export const TurnEventType = z.enum([
   "task_updated",
   /** A message draft: { recipientName, body }. Never sent server-side. */
   "draft",
+  /** A CalendarProposal: confirmed, written, and read back on-device. */
+  "calendar_proposal",
   "done",
   "error",
 ]);
