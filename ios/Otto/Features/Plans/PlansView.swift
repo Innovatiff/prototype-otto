@@ -129,6 +129,7 @@ private struct PlanSectionView: View {
                 if let plan = model.details[active.id],
                    let next = PlanScheduling.nextOccurrence(in: plan, now: Date()) {
                     Button {
+                        Haptics.tick()
                         onStartSession(plan)
                     } label: {
                         Label(Self.startLabel(next), systemImage: "play.fill")

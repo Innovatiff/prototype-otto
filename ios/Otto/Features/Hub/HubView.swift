@@ -97,6 +97,7 @@ struct HubView: View {
             HStack(spacing: 10) {
                 ForEach(Pane.allCases, id: \.self) { candidate in
                     Button {
+                        Haptics.tick()
                         withAnimation(.snappy(duration: 0.15)) { pane = candidate }
                     } label: {
                         Text(candidate.rawValue)

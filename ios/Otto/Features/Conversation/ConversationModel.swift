@@ -118,6 +118,45 @@ final class ConversationModel {
     /// yes/no ("You were 4 steps into Upper A. Pick up where you left off?").
     private var pendingGuidanceResume: GuidanceSnapshot?
 
+    /// The stage's "up next" chip: today's (or the next) session on the
+    /// active plan, one tap from starting. Nil when there's nothing to run.
+    private(set) var upNextLabel: String?
+    private var upNextPlan: Plan?
+
+    /// Best-effort; offline or planless just means no chip.
+    func refreshUpNext() async {
+        guard auth.currentUserId != nil else {
+            upNextLabel = nil
+            upNextPlan = nil
+            return
+        }
+        await plansModel.load()
+        guard let active = plansModel.activePlans.first else {
+            upNextLabel = nil
+            upNextPlan = nil
+            return
+        }
+        await plansModel.loadDetail(id: active.id)
+        guard let plan = plansModel.details[active.id],
+              let next = PlanScheduling.nextOccurrence(in: plan, now: Date())
+        else {
+            upNextLabel = nil
+            upNextPlan = nil
+            return
+        }
+        upNextPlan = plan
+        let label =
+            Foundation.Calendar.current.isDateInToday(next.date)
+            ? "\(next.session.title) · today"
+            : "\(next.session.title) · \(next.date.formatted(.dateTime.weekday(.wide)))"
+        withAnimation(.snappy) { upNextLabel = label }
+    }
+
+    func startUpNext() {
+        guard let plan = upNextPlan else { return }
+        Task { await self.startSession(with: plan) }
+    }
+
     /// "Start my workout" — resolve the active plan's next occurrence and
     /// hand it to the runtime. Every failure is spoken; announce's tail
     /// returns the mic to conversation listening.
@@ -145,6 +184,8 @@ final class ConversationModel {
             await voiceLoop.announce("There's nothing left to run on that plan.")
             return
         }
+        // The one canonical start haptic — every entry point funnels here.
+        Haptics.press()
         await guidance.start(
             planId: plan.id,
             domain: plan.meta.domain,
@@ -173,6 +214,7 @@ final class ConversationModel {
             await voiceLoop.announce("I couldn't load that plan, so I'll leave it be.")
             return
         }
+        Haptics.press()
         await guidance.start(
             planId: plan.id,
             domain: plan.meta.domain,
@@ -285,13 +327,20 @@ final class ConversationModel {
         }
 
         // Killed mid-session? Offer to pick up exactly where they left off.
+        // The mic must be LIVE for the answer — the offer opens the
+        // conversation, speaks, and listens; the armed capture claims the
+        // yes/no before it can become a server turn.
         if let snapshot = guidance.pendingResume() {
             pendingGuidanceResume = snapshot
             Task {
+                Haptics.press()
                 await self.voiceLoop.armUtteranceCapture()
+                await self.voiceLoop.startConversation()
                 await self.voiceLoop.announce(snapshot.resumeOfferLine)
             }
         }
+
+        Task { await self.refreshUpNext() }
     }
 
     func storedWakeTime() -> (hour: Int, minute: Int) {
@@ -476,8 +525,10 @@ final class ConversationModel {
                 Task { await self.beginPlanScheduleFlow() }
             }
         case .draft(let recipientName, let body):
+            Haptics.tap()
             pendingDraft = (recipientName, body)
         case .calendarProposal(let proposal):
+            Haptics.tap()
             pendingCalendarProposal = proposal
         case .capturedUtterance(let text):
             Task { await self.handleCapturedReply(text) }
@@ -493,6 +544,7 @@ final class ConversationModel {
             }
         case .planReady(let plan):
             planPhase = .idle
+            Haptics.success()
             withAnimation(.snappy) { planCard = plan }
             plansModel.apply(plan)
             // Offer calendar scheduling for NEW plans only — an adapted
@@ -500,9 +552,11 @@ final class ConversationModel {
             if plan.meta.version == 1 {
                 pendingPlanOffer = plan
             }
+            Task { await self.refreshUpNext() }
         case .planFailed:
             planPhase = .idle
         case .task(let task):
+            Haptics.tap()
             tasksModel.apply(task)
             Task {
                 let outcome = await self.reminders.handle(task)
@@ -969,8 +1023,18 @@ final class ConversationModel {
         return APIClient(baseURL: url, auth: auth)
     }
 
+    private var lastLevelPublish: TimeInterval = 0
+
     private func handleLevel(_ db: Float) {
         lastLevelDb = db
+        // Levels arrive ~50×/second; publishing each one re-renders the
+        // whole stage that often. ~24fps is indistinguishable to the eye
+        // and cuts the SwiftUI invalidation load by half or more — and an
+        // idle stage with no overlay needs no bars at all.
+        guard state != .idle || overlayVisible else { return }
+        let now = Date.timeIntervalSinceReferenceDate
+        guard now - lastLevelPublish >= 0.042 else { return }
+        lastLevelPublish = now
         // Speech at arm's length spans roughly -58dB (quiet) to -20dB (loud).
         let normalized = max(0, min(1, (db + 58) / 38))
         micBars.removeFirst()

@@ -93,6 +93,15 @@ final class GuidanceRuntime {
         activePlanId = planId
         activeScheduledDate = scheduledDate
         activeTemplate = template
+        // The screen appears IMMEDIATELY — the network work below (outbox
+        // flush, reference weights) happens under it, never in front of it.
+        phase = .running
+        sessionTitle = template.title
+        totalSteps = template.steps.count
+        stepIndex = resumeFrom?.currentStepIndex ?? 0
+        currentStep = nil
+        resting = false
+        isPaused = false
         if domain == "fitness", HealthService.isAvailable {
             if await health.requestAuthorization() {
                 await health.beginWorkout(at: Date())
@@ -121,13 +130,6 @@ final class GuidanceRuntime {
             play: { [voiceLoop] clip in await voiceLoop.playClip(clip) }
         )
         self.conductor = conductor
-        phase = .running
-        sessionTitle = template.title
-        totalSteps = template.steps.count
-        stepIndex = resumeFrom?.currentStepIndex ?? 0
-        currentStep = nil
-        resting = false
-        isPaused = false
 
         let events = await conductor.events()
         eventsTask = Task {
@@ -137,6 +139,7 @@ final class GuidanceRuntime {
         }
         // The ring: poll the running countdown twice a second while active.
         displayTask = Task {
+            var wasInFinalTen = false
             while !Task.isCancelled {
                 if let current = self.conductor {
                     let display = await current.displayState()
@@ -144,6 +147,14 @@ final class GuidanceRuntime {
                     if display.status != nil {
                         self.statusText = display.status
                     }
+                    // A soft pulse as the clock crosses ten — the haptic
+                    // twin of the "Ten seconds" clip.
+                    let inFinalTen =
+                        display.timer.map { $0.remaining <= 10 && !$0.isPaused } ?? false
+                    if inFinalTen && !wasInFinalTen {
+                        Haptics.warning()
+                    }
+                    wasInFinalTen = inFinalTen
                 }
                 try? await Task.sleep(for: .milliseconds(500))
             }
@@ -196,10 +207,19 @@ final class GuidanceRuntime {
     }
 
     /// The UI's tap alternative to voice — the "Done" button is `.next`.
+    /// Debounced: a double-tap on Done must complete ONE set, not two.
     func tap(_ command: VoiceCommand) {
         guard let conductor else { return }
+        let now = Date()
+        if let last = lastTap, last.command == command,
+           now.timeIntervalSince(last.at) < 0.35 {
+            return
+        }
+        lastTap = (command, now)
         Task { await conductor.handle(command) }
     }
+
+    private var lastTap: (command: VoiceCommand, at: Date)?
 
     // MARK: - Event application
 
@@ -208,6 +228,9 @@ final class GuidanceRuntime {
         case .began(let title, _):
             sessionTitle = title
         case .stepChanged(let index, let total, let step):
+            if index > 0 {
+                Haptics.step()
+            }
             withAnimation(.snappy) {
                 stepIndex = index
                 totalSteps = total
@@ -220,11 +243,18 @@ final class GuidanceRuntime {
                 }
             }
         case .resting:
+            Haptics.tap()
             withAnimation(.snappy) { resting = true }
         case .paused(let paused):
             isPaused = paused
+            if paused {
+                Haptics.caution()
+            } else {
+                Haptics.tap()
+            }
         case .finished(let early, let snapshot):
             lastSnapshot = snapshot
+            Haptics.success()
             Task { await self.teardown(early: early) }
         }
     }
@@ -268,7 +298,7 @@ final class GuidanceRuntime {
                 durationSec: Int(max(0, completedAt.timeIntervalSince(snapshot.startedAt))),
                 endedEarly: early
             )
-            outbox.append(PendingRecord(planId: planId, upload: upload))
+            await outbox.append(PendingRecord(planId: planId, upload: upload))
             await flushOutbox()
         }
         activePlanId = nil

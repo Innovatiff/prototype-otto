@@ -828,7 +828,13 @@ actor VoiceLoop {
         emit(.notice("Interrupted."))
         await abortTurn(fade: true)
         emit(.timing(timings))
-        if conversationActive {
+        if guidanceModeActive {
+            // The aborted answer still ENDS the turn: an off-script
+            // suspension waits on ottoDone, and without this the session
+            // would hang frozen forever.
+            emit(.ottoDone)
+        }
+        if conversationActive || guidanceModeActive {
             await startListening()
         }
     }
@@ -859,16 +865,21 @@ actor VoiceLoop {
     private func handleSessionState(_ sessionState: AudioSessionState) async {
         switch sessionState {
         case .interrupted:
-            guard conversationActive else { return }
+            guard conversationActive || guidanceModeActive else { return }
             resumeAfterInterruption = true
             // No fade: the system already silenced our output.
             await abortTurn(fade: false)
+            if guidanceModeActive {
+                // A call cutting off an off-script answer must not leave the
+                // session suspended — end the turn so it resumes.
+                emit(.ottoDone)
+            }
             if let transcriber {
                 await transcriber.cancel()
             }
             setState(.idle)
         case .active:
-            if conversationActive, resumeAfterInterruption, state == .idle {
+            if conversationActive || guidanceModeActive, resumeAfterInterruption, state == .idle {
                 resumeAfterInterruption = false
                 await startListening()
             }

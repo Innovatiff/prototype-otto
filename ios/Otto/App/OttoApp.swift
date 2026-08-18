@@ -17,6 +17,10 @@ struct OttoApp: App {
 
     init() {
         FirebaseApp.configure()
+        // Render the orb's 60k grains during launch, where the work is
+        // masked — never as a hitch on the first frame of the stage.
+        _ = OrbGrain.fieldA
+        _ = OrbGrain.fieldB
         // EmailPasswordAuth is the Phase 0 AuthProvider. Sign in with Apple
         // becomes a second implementation of the same protocol later — this
         // line is the only one that changes. One instance feeds every model

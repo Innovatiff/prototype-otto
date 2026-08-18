@@ -177,6 +177,16 @@ final class SystemSpeaker: Speaker, SpeakerInstrumentation {
     private func beginSession() -> Int {
         watchEngineRestartsIfNeeded()
         generation += 1
+        // A new session supersedes any in-flight one. Release its waiters
+        // NOW — storing a new continuation over an unresumed one leaks it,
+        // and the superseded speak() would hang its caller forever (the
+        // guidance conductor plays clips while cues can still be draining).
+        // The superseded call sees a stale generation and simply returns;
+        // audio already queued on the player node still plays out in order.
+        utteranceContinuation?.resume()
+        utteranceContinuation = nil
+        drainContinuation?.resume()
+        drainContinuation = nil
         stopping = false
         isSpeaking = true
         outstandingBuffers = 0

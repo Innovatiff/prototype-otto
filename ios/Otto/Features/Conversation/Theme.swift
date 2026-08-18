@@ -165,6 +165,18 @@ struct EclipseOrb: View {
     }
 }
 
+/// Presses compress slightly — every control answers the finger.
+struct PressableButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.94
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 /// The big mic — a full-white disc with a soft elevation ring and glow,
 /// black glyph, exactly the reference's center control.
 struct MicButton: View {
@@ -188,7 +200,7 @@ struct MicButton: View {
                     .foregroundStyle(Color.black)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(scale: 0.9))
     }
 }
 
@@ -208,6 +220,6 @@ struct CircleIconButton: View {
                 .background(prominent ? Color.white : OttoTheme.control, in: Circle())
                 .overlay(Circle().stroke(OttoTheme.hairline, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(scale: 0.88))
     }
 }

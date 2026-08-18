@@ -50,7 +50,13 @@ struct ConversationView: View {
                 },
                 onStartSession: { plan in
                     showingHub = false
-                    Task { await model.startSession(with: plan) }
+                    Task {
+                        // Let the sheet finish dismissing before the
+                        // full-screen cover presents — simultaneous
+                        // transitions can drop the presentation.
+                        try? await Task.sleep(for: .milliseconds(300))
+                        await model.startSession(with: plan)
+                    }
                 }
             )
         }
@@ -80,6 +86,13 @@ struct ConversationView: View {
         .onChange(of: showingSettings) { _, isPresented in
             if !isPresented {
                 model.refreshAccount()
+                Task { await model.refreshUpNext() }
+            }
+        }
+        .onChange(of: model.guidance.phase) { _, phase in
+            if phase == .idle {
+                // A session just wrapped — the chip should show what's next.
+                Task { await model.refreshUpNext() }
             }
         }
         .task {
@@ -102,6 +115,29 @@ struct ConversationView: View {
                 Text("Sign in to talk to Otto.")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(OttoTheme.textPrimary)
+            }
+
+            // Today's session, one tap away — the plan reaching back out.
+            if model.signedIn, model.state == .idle, let upNext = model.upNextLabel {
+                Button {
+                    model.startUpNext()
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(upNext)
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .foregroundStyle(OttoTheme.textPrimary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(OttoTheme.surface, in: Capsule())
+                    .overlay(Capsule().stroke(OttoTheme.hairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 10)
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .accessibilityLabel("Start \(upNext)")
             }
 
             Spacer(minLength: 18)
@@ -428,6 +464,7 @@ struct ConversationView: View {
     private var controlBar: some View {
         HStack {
             CircleIconButton(systemName: "square.grid.2x2") {
+                Haptics.tap()
                 showingHub = true
             }
             .accessibilityLabel("Hub")
@@ -435,6 +472,7 @@ struct ConversationView: View {
             Spacer()
 
             MicButton(systemName: model.state == .idle ? "mic.fill" : "stop.fill") {
+                Haptics.press()
                 model.toggleVoice()
             }
             .disabled(!model.signedIn)
@@ -443,6 +481,7 @@ struct ConversationView: View {
             Spacer()
 
             CircleIconButton(systemName: "gearshape") {
+                Haptics.tap()
                 showingSettings = true
             }
             .accessibilityLabel("Settings")

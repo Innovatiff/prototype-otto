@@ -9,8 +9,9 @@ struct PendingRecord: Codable, Equatable, Sendable {
 /// Store-and-forward for session records. A basement session with no
 /// signal must lose NOTHING: records append to disk first, then flush —
 /// on session end and on the next session start — removing only what the
-/// server confirmed. Single-caller (the runtime), sequential by design.
-final class RecordOutbox: Sendable {
+/// server confirmed. An actor so a teardown flush and the next session's
+/// start flush can never interleave their load/save cycles.
+actor RecordOutbox {
 
     private let fileURL: URL
 
@@ -38,7 +39,7 @@ final class RecordOutbox: Sendable {
     /// Attempts each pending record in order; keeps what failed (order
     /// preserved) for the next flush. Returns how many remain.
     @discardableResult
-    func flush(send: (PendingRecord) async -> Bool) async -> Int {
+    func flush(send: @Sendable (PendingRecord) async -> Bool) async -> Int {
         let all = load()
         guard !all.isEmpty else { return 0 }
         var remaining: [PendingRecord] = []

@@ -146,6 +146,20 @@ actor GuidanceConductor {
                     await beginCurrentStep()
                 }
                 return
+            case .skip:
+                // Skip during a rest skips what the rest leads INTO — the
+                // upcoming step, which the index already points at.
+                await interStepRest.cancel()
+                self.interStepRest = nil
+                if await session.restFinished(), await session.skip() {
+                    await playClipLine(.skipped)
+                    if await session.state == .finished {
+                        await finishSession(early: false)
+                    } else {
+                        await beginCurrentStep()
+                    }
+                }
+                return
             case .timeLeft, .repeatCue:
                 _ = await interStepRest.handleVoiceCommand(.timeLeft)
                 return

@@ -107,6 +107,7 @@ struct TasksView: View {
 
     private func itemRow(_ listItem: ListItem, in task: OttoTask) -> some View {
         Button {
+            Haptics.tick()
             Task { await model.toggle(item: listItem, in: task) }
         } label: {
             HStack(spacing: 10) {

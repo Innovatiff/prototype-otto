@@ -37,23 +37,25 @@ final class RecordOutboxTests: XCTestCase {
         )
     }
 
-    func testAppendSurvivesReload() {
-        outbox.append(pending("p1"))
-        outbox.append(pending("p2"))
+    func testAppendSurvivesReload() async {
+        await outbox.append(pending("p1"))
+        await outbox.append(pending("p2"))
         // A fresh instance (a relaunched app) sees both, in order.
         let reloaded = RecordOutbox(directory: directory)
-        XCTAssertEqual(reloaded.load().map(\.planId), ["p1", "p2"])
-        XCTAssertEqual(reloaded.load().first?.upload.loggedValues["s1"], "135 pounds")
+        let records = await reloaded.load()
+        XCTAssertEqual(records.map(\.planId), ["p1", "p2"])
+        XCTAssertEqual(records.first?.upload.loggedValues["s1"], "135 pounds")
     }
 
     func testFlushRemovesOnlyWhatTheServerConfirmed() async {
-        outbox.append(pending("p1"))
-        outbox.append(pending("p2"))
-        outbox.append(pending("p3"))
+        await outbox.append(pending("p1"))
+        await outbox.append(pending("p2"))
+        await outbox.append(pending("p3"))
         // The middle one fails — it stays, order preserved.
         let remaining = await outbox.flush { record in record.planId != "p2" }
         XCTAssertEqual(remaining, 1)
-        XCTAssertEqual(outbox.load().map(\.planId), ["p2"])
+        let kept = await outbox.load()
+        XCTAssertEqual(kept.map(\.planId), ["p2"])
 
         // Total failure (airplane mode) keeps everything.
         let offline = await outbox.flush { _ in false }
@@ -62,6 +64,7 @@ final class RecordOutboxTests: XCTestCase {
         // Success drains the file entirely.
         let drained = await outbox.flush { _ in true }
         XCTAssertEqual(drained, 0)
-        XCTAssertEqual(outbox.load(), [])
+        let empty = await outbox.load()
+        XCTAssertEqual(empty, [])
     }
 }
