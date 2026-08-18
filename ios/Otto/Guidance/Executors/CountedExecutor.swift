@@ -92,6 +92,11 @@ actor CountedExecutor: StepExecutor {
         step = nil
     }
 
+    func timerSnapshot() async -> GuidanceTimerSnapshot? {
+        guard let rest else { return nil }
+        return await rest.timerSnapshot()
+    }
+
     /// "Set 2 of 3, 8 reps." — or the rest clock when mid-rest.
     func statusLine() async -> String? {
         if let rest, let remaining = await rest.remainingSeconds {

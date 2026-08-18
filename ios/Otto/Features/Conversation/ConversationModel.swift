@@ -112,6 +112,76 @@ final class ConversationModel {
     private var planToSchedule: Plan?
     private var pendingPlanOffer: Plan?
 
+    // MARK: - Guided sessions
+
+    /// A killed-mid-session snapshot awaiting the spoken resume offer's
+    /// yes/no ("You were 4 steps into Upper A. Pick up where you left off?").
+    private var pendingGuidanceResume: GuidanceSnapshot?
+
+    /// "Start my workout" — resolve the active plan's next occurrence and
+    /// hand it to the runtime. Every failure is spoken; announce's tail
+    /// returns the mic to conversation listening.
+    func startTodaysSession() async {
+        guard guidance.phase == .idle else { return }
+        guard await prepareForTurn() else { return }
+        await plansModel.load()
+        guard let active = plansModel.activePlans.first else {
+            await voiceLoop.announce("You don't have an active plan yet. Ask me to build one first.")
+            return
+        }
+        await plansModel.loadDetail(id: active.id)
+        guard let plan = plansModel.details[active.id] else {
+            await voiceLoop.announce("I couldn't load your plan. Try again in a moment.")
+            return
+        }
+        await startSession(with: plan)
+    }
+
+    /// The hub's "Start" button lands here with the full plan in hand.
+    func startSession(with plan: Plan) async {
+        guard guidance.phase == .idle else { return }
+        guard await prepareForTurn() else { return }
+        guard let occurrence = PlanScheduling.nextOccurrence(in: plan, now: Date()) else {
+            await voiceLoop.announce("There's nothing left to run on that plan.")
+            return
+        }
+        await guidance.start(
+            planId: plan.id,
+            domain: plan.meta.domain,
+            template: occurrence.session,
+            progression: occurrence.entry.progression,
+            scheduledDate: occurrence.date
+        )
+    }
+
+    private func handleGuidanceResumeReply(_ text: String) async {
+        guard let snapshot = pendingGuidanceResume else { return }
+        pendingGuidanceResume = nil
+        let reply = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: .punctuationCharacters)
+        guard Self.affirmatives.contains(reply) else {
+            guidance.clearPendingResume()
+            await voiceLoop.announce("Okay — starting fresh next time.")
+            return
+        }
+        guard await prepareForTurn() else { return }
+        await plansModel.load()
+        await plansModel.loadDetail(id: snapshot.planId)
+        guard let plan = plansModel.details[snapshot.planId],
+              let template = plan.sessions.first(where: { $0.id == snapshot.sessionId })
+        else {
+            await voiceLoop.announce("I couldn't load that plan, so I'll leave it be.")
+            return
+        }
+        await guidance.start(
+            planId: plan.id,
+            domain: plan.meta.domain,
+            template: template,
+            progression: nil,
+            resumeFrom: snapshot
+        )
+    }
+
     // MARK: - The morning brief
 
     /// The structured half of the brief, rendered while Otto speaks.
@@ -212,6 +282,15 @@ final class ConversationModel {
         if UserDefaults.standard.bool(forKey: Self.briefEnabledKey) {
             let (hour, minute) = storedWakeTime()
             Task { _ = await self.reminders.scheduleBrief(hour: hour, minute: minute) }
+        }
+
+        // Killed mid-session? Offer to pick up exactly where they left off.
+        if let snapshot = guidance.pendingResume() {
+            pendingGuidanceResume = snapshot
+            Task {
+                await self.voiceLoop.armUtteranceCapture()
+                await self.voiceLoop.announce(snapshot.resumeOfferLine)
+            }
         }
     }
 
@@ -406,6 +485,8 @@ final class ConversationModel {
             Task { await self.runBrief() }
         case .guidanceUtterance(let text):
             Task { await self.guidance.handleUtterance(text) }
+        case .guidanceStartRequested:
+            Task { await self.startTodaysSession() }
         case .planProgress(let stage):
             withAnimation(.snappy) {
                 planPhase = stage == .designing ? .designing : .scheduling
@@ -536,6 +617,8 @@ final class ConversationModel {
             await handleCalendarReply(text)
         } else if planScheduleStage != .idle {
             await handlePlanScheduleReply(text)
+        } else if pendingGuidanceResume != nil {
+            await handleGuidanceResumeReply(text)
         }
     }
 

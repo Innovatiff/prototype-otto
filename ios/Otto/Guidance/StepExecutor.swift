@@ -57,6 +57,13 @@ extension GuidanceOutputting {
 /// behavior. Executors DRIVE the GuidanceSession via the conductor — they
 /// never own session state. AnyObject so the conductor can identity-check
 /// that a completion still belongs to the current step.
+/// What the UI's timer ring renders — remaining over total, frozen flag.
+struct GuidanceTimerSnapshot: Equatable, Sendable {
+    let remaining: TimeInterval
+    let total: TimeInterval
+    let isPaused: Bool
+}
+
 protocol StepExecutor: AnyObject, Sendable {
     func begin(_ step: Step) async
     func handleVoiceCommand(_ cmd: VoiceCommand) async -> ExecutorResult
@@ -64,10 +71,13 @@ protocol StepExecutor: AnyObject, Sendable {
     /// One short spoken line locating the user in the step — the off-script
     /// return anchor: "Set 2 of 3, 8 reps." Nil where position means nothing.
     func statusLine() async -> String?
+    /// The running countdown, if any — the UI ring polls this.
+    func timerSnapshot() async -> GuidanceTimerSnapshot?
 }
 
 extension StepExecutor {
     func statusLine() async -> String? { nil }
+    func timerSnapshot() async -> GuidanceTimerSnapshot? { nil }
 }
 
 enum StepExecutors {

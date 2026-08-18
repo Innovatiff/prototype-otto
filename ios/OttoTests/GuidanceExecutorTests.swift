@@ -51,6 +51,8 @@ final class GuidanceExecutorTests: XCTestCase {
 
         core.markWarned()
         XCTAssertFalse(core.nextWakeup(now: t0.addingTimeInterval(100)).isWarning)
+        // The ring's denominator survives pause/resume untouched.
+        XCTAssertEqual(core.totalSeconds, 60)
     }
 
     func testShortTimersNeverWarn() {

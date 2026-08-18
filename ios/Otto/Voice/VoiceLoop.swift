@@ -72,6 +72,9 @@ enum ConversationEvent: Sendable {
     /// server turn from here: the guidance runtime classifies it on device
     /// (commands respond instantly) and only off-script questions escalate.
     case guidanceUtterance(String)
+    /// "Start my workout" — the model starts today's guided session (a
+    /// local runtime, never a server turn).
+    case guidanceStartRequested
     /// Plan generation progress — drives the on-screen state text
     /// ("Designing your week…"), never a spinner.
     case planProgress(PlanProgressStage)
@@ -596,6 +599,13 @@ actor VoiceLoop {
                 Task {
                     await self.startListening()
                 }
+                return
+            }
+            if GuidanceTriggers.matches(transcript) {
+                // The guided session owns the mic next: its start switches
+                // to guidance listening, and the failure path announces —
+                // which itself returns to listening. No restart here.
+                emit(.guidanceStartRequested)
                 return
             }
             Task {

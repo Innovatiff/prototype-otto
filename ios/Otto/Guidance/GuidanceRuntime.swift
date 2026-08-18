@@ -27,6 +27,12 @@ final class GuidanceRuntime {
     private(set) var isPaused = false
     /// An off-script answer is in flight; the session is suspended under it.
     private(set) var answeringQuestion = false
+    /// The running countdown for the ring, polled ~2×/second while active.
+    private(set) var timer: GuidanceTimerSnapshot?
+    /// "Set 2 of 3, 8 reps." / "Rest" — the position line as text.
+    private(set) var statusText: String?
+    /// Previewed small at the bottom, low contrast.
+    private(set) var nextStepTitle: String?
     /// The finished session's truth — Step 8 writes the SessionRecord from
     /// this.
     private(set) var lastSnapshot: GuidanceSnapshot?
@@ -47,9 +53,11 @@ final class GuidanceRuntime {
     private let outbox = RecordOutbox()
     private var conductor: GuidanceConductor?
     private var eventsTask: Task<Void, Never>?
+    private var displayTask: Task<Void, Never>?
     private var workoutTracking = false
     private var activePlanId: String?
     private var activeScheduledDate: Date?
+    private var activeTemplate: Session?
 
     init(voiceLoop: VoiceLoop, auth: any AuthProvider) {
         self.voiceLoop = voiceLoop
@@ -60,6 +68,11 @@ final class GuidanceRuntime {
     /// caller offers "Pick up where you left off?" and passes it to start.
     func pendingResume() -> GuidanceSnapshot? {
         store.pendingResume()
+    }
+
+    /// The user declined the resume offer — never offer that session again.
+    func clearPendingResume() {
+        store.clear()
     }
 
     // MARK: - Lifecycle
@@ -79,6 +92,7 @@ final class GuidanceRuntime {
         guard conductor == nil else { return }
         activePlanId = planId
         activeScheduledDate = scheduledDate
+        activeTemplate = template
         if domain == "fitness", HealthService.isAvailable {
             if await health.requestAuthorization() {
                 await health.beginWorkout(at: Date())
@@ -119,6 +133,19 @@ final class GuidanceRuntime {
         eventsTask = Task {
             for await event in events {
                 self.apply(event)
+            }
+        }
+        // The ring: poll the running countdown twice a second while active.
+        displayTask = Task {
+            while !Task.isCancelled {
+                if let current = self.conductor {
+                    let display = await current.displayState()
+                    self.timer = display.timer
+                    if display.status != nil {
+                        self.statusText = display.status
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(500))
             }
         }
 
@@ -186,6 +213,11 @@ final class GuidanceRuntime {
                 totalSteps = total
                 currentStep = step
                 resting = false
+                timer = nil
+                statusText = nil
+                nextStepTitle = activeTemplate.flatMap { template in
+                    index + 1 < template.steps.count ? template.steps[index + 1].title : nil
+                }
             }
         case .resting:
             withAnimation(.snappy) { resting = true }
@@ -200,11 +232,17 @@ final class GuidanceRuntime {
     private func teardown(early: Bool) async {
         eventsTask?.cancel()
         eventsTask = nil
+        displayTask?.cancel()
+        displayTask = nil
         conductor = nil
         currentStep = nil
         resting = false
         isPaused = false
         answeringQuestion = false
+        timer = nil
+        statusText = nil
+        nextStepTitle = nil
+        activeTemplate = nil
         phase = .finished(early: early)
         GuidanceScreenLock.keepAwake(false)
         await voiceLoop.stopGuidanceListening()

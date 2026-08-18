@@ -85,6 +85,18 @@ actor GuidanceConductor {
         await session.currentSnapshot
     }
 
+    /// What the guidance screen polls (~2×/second): the running countdown
+    /// (between-step rest first, then the step's own timer) and the spoken
+    /// position line rendered as text ("Set 2 of 3, 8 reps.").
+    func displayState() async -> (timer: GuidanceTimerSnapshot?, status: String?) {
+        if let interStepRest, let snapshot = await interStepRest.timerSnapshot() {
+            return (snapshot, "Rest")
+        }
+        let timer = await executor?.timerSnapshot()
+        let status = await executor?.statusLine()
+        return (timer, status)
+    }
+
     /// Lossless event stream for the guidance UI. Single consumer.
     func events() -> AsyncStream<GuidanceEvent> {
         let (stream, continuation) = AsyncStream.makeStream(of: GuidanceEvent.self)

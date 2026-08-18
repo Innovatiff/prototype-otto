@@ -116,6 +116,15 @@ final class GuidanceCommandTests: XCTestCase {
         }
     }
 
+    func testSessionStartTriggers() {
+        XCTAssertTrue(GuidanceTriggers.matches("Start my workout"))
+        XCTAssertTrue(GuidanceTriggers.matches("start today's session"))
+        XCTAssertTrue(GuidanceTriggers.matches("Otto, start my session."))
+        XCTAssertTrue(GuidanceTriggers.matches("let's train"))
+        XCTAssertFalse(GuidanceTriggers.matches("when should I start my workout"))
+        XCTAssertFalse(GuidanceTriggers.matches("start a new plan"))
+    }
+
     func testChecklistAndSessionEnds() {
         XCTAssertEqual(classify("check"), .next)
         XCTAssertEqual(classify("that's enough"), .stop)

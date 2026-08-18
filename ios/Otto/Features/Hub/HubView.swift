@@ -18,6 +18,8 @@ struct HubView: View {
     /// "Adapt this plan": dismisses the hub and opens the mic — the change
     /// is spoken, and the conversation carries the adapt_plan tool.
     let onAdaptPlan: () -> Void
+    /// "Start …": dismisses the hub and launches the guided session.
+    let onStartSession: (Plan) -> Void
 
     @State private var pane: Pane = .tasks
 
@@ -136,7 +138,7 @@ struct HubView: View {
                 caption: "Runs Otto performs on his own land here — arriving with a later phase."
             )
         case .plans:
-            PlansView(model: plans, onAdaptPlan: onAdaptPlan)
+            PlansView(model: plans, onAdaptPlan: onAdaptPlan, onStartSession: onStartSession)
         }
     }
 

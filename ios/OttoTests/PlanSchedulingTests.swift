@@ -99,6 +99,38 @@ final class PlanSchedulingTests: XCTestCase {
         XCTAssertEqual(utc.component(.hour, from: result[0].draft.startsAt), 18)
     }
 
+    func testNextOccurrencePrefersTodayThenFuture() {
+        let schedule = [
+            ScheduledSession(sessionId: "lower-a", dayOffset: 0),
+            ScheduledSession(sessionId: "lower-a", dayOffset: 4),
+            ScheduledSession(sessionId: "lower-a", dayOffset: 7),
+        ]
+        // Day 4, morning: today's own entry wins.
+        let onDay = PlanScheduling.nextOccurrence(
+            in: plan(schedule: schedule),
+            now: created.addingTimeInterval(4 * 86_400 + 3600),
+            calendar: utc
+        )
+        XCTAssertEqual(onDay?.entry.dayOffset, 4)
+        XCTAssertEqual(onDay?.session.id, "lower-a")
+
+        // Day 5: nothing today — the day-7 entry is next.
+        let between = PlanScheduling.nextOccurrence(
+            in: plan(schedule: schedule),
+            now: created.addingTimeInterval(5 * 86_400),
+            calendar: utc
+        )
+        XCTAssertEqual(between?.entry.dayOffset, 7)
+
+        // Past the last entry: the plan has nothing left.
+        let done = PlanScheduling.nextOccurrence(
+            in: plan(schedule: schedule),
+            now: created.addingTimeInterval(30 * 86_400),
+            calendar: utc
+        )
+        XCTAssertNil(done)
+    }
+
     func testMalformedTimeFallsBackAndUnknownSessionSkipped() {
         let result = PlanScheduling.drafts(
             for: plan(schedule: [

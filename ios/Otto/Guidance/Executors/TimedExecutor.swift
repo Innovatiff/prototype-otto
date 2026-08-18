@@ -6,6 +6,8 @@ import Foundation
 /// the announcements land.
 struct TimedCore: Equatable, Sendable {
     let warningLead: TimeInterval
+    /// The countdown's full length — the UI ring's denominator.
+    let totalSeconds: TimeInterval
     private(set) var deadline: Date
     private(set) var pausedRemaining: TimeInterval?
     private(set) var warned: Bool
@@ -19,6 +21,7 @@ struct TimedCore: Equatable, Sendable {
         minimumForWarning: TimeInterval = 12
     ) {
         self.warningLead = warningLead
+        self.totalSeconds = seconds
         self.deadline = now.addingTimeInterval(seconds)
         self.pausedRemaining = nil
         self.warned = seconds <= minimumForWarning
@@ -152,6 +155,15 @@ actor TimedExecutor: StepExecutor {
     func statusLine() async -> String? {
         guard let core else { return nil }
         return GuidancePhrases.remainingLine(seconds: core.remaining(now: Date()))
+    }
+
+    func timerSnapshot() async -> GuidanceTimerSnapshot? {
+        guard let core else { return nil }
+        return GuidanceTimerSnapshot(
+            remaining: core.remaining(now: Date()),
+            total: core.totalSeconds,
+            isPaused: core.isPaused
+        )
     }
 
     // MARK: - The countdown loop

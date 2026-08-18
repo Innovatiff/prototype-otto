@@ -38,12 +38,33 @@ struct ConversationView: View {
             }
         )
         .sheet(isPresented: $showingHub) {
-            HubView(tasks: tasks, memory: memory, plans: plans) {
-                // Adaptation is spoken: close the hub, open the mic, and the
-                // user says what changed.
-                showingHub = false
-                model.beginPlanAdaptation()
-            }
+            HubView(
+                tasks: tasks,
+                memory: memory,
+                plans: plans,
+                onAdaptPlan: {
+                    // Adaptation is spoken: close the hub, open the mic, and
+                    // the user says what changed.
+                    showingHub = false
+                    model.beginPlanAdaptation()
+                },
+                onStartSession: { plan in
+                    showingHub = false
+                    Task { await model.startSession(with: plan) }
+                }
+            )
+        }
+        .fullScreenCover(
+            isPresented: Binding(
+                get: { model.guidance.phase != .idle },
+                set: { presented in
+                    if !presented {
+                        model.guidance.reset()
+                    }
+                }
+            )
+        ) {
+            GuidanceView(runtime: model.guidance)
         }
         .sheet(isPresented: $showingSettings) {
             DebugView(model: settings, onBriefScheduleChange: { enabled, hour, minute in

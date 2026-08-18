@@ -8,6 +8,8 @@ struct PlansView: View {
     @Bindable var model: PlansModel
     /// Dismisses the hub and starts listening — the user says what changed.
     let onAdaptPlan: () -> Void
+    /// Dismisses the hub and launches the guided session for this plan.
+    let onStartSession: (Plan) -> Void
 
     var body: some View {
         ScrollView {
@@ -22,7 +24,12 @@ struct PlansView: View {
                     emptyState
                 } else {
                     ForEach(model.activePlans) { active in
-                        PlanSectionView(active: active, model: model, onAdaptPlan: onAdaptPlan)
+                        PlanSectionView(
+                            active: active,
+                            model: model,
+                            onAdaptPlan: onAdaptPlan,
+                            onStartSession: onStartSession
+                        )
                     }
                 }
             }
@@ -61,6 +68,7 @@ private struct PlanSectionView: View {
     let active: PlanSummary
     @Bindable var model: PlansModel
     let onAdaptPlan: () -> Void
+    let onStartSession: (Plan) -> Void
 
     /// nil = the current (active) version.
     @State private var selectedVersionId: String?
@@ -117,17 +125,34 @@ private struct PlanSectionView: View {
                 .font(.caption)
                 .foregroundStyle(OttoTheme.textSecondary)
 
-            Button(action: onAdaptPlan) {
-                Label("Adapt this plan", systemImage: "mic.fill")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(Color.black)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 9)
-                    .background(Color.white, in: Capsule())
+            HStack(spacing: 10) {
+                if let plan = model.details[active.id],
+                   let next = PlanScheduling.nextOccurrence(in: plan, now: Date()) {
+                    Button {
+                        onStartSession(plan)
+                    } label: {
+                        Label(Self.startLabel(next), systemImage: "play.fill")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(Color.black)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 9)
+                            .background(Color.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button(action: onAdaptPlan) {
+                    Label("Adapt", systemImage: "mic.fill")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(OttoTheme.textPrimary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(OttoTheme.control, in: Capsule())
+                        .overlay(Capsule().stroke(OttoTheme.hairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             .padding(.top, 6)
-            Text("Tell Otto what changed — an injury, missed days, a new schedule.")
+            Text("Adapt by voice — tell Otto what changed: an injury, missed days, a new schedule.")
                 .font(.caption2)
                 .foregroundStyle(OttoTheme.textTertiary)
         }
@@ -277,6 +302,17 @@ private struct PlanSectionView: View {
     }
 
     // MARK: - Derivations
+
+    /// "Start Lower A" today, "Start Lower A · Thu" for a future one.
+    private static func startLabel(
+        _ next: (entry: ScheduledSession, session: Session, date: Date)
+    ) -> String {
+        if Foundation.Calendar.current.isDateInToday(next.date) {
+            return "Start \(next.session.title)"
+        }
+        let day = next.date.formatted(.dateTime.weekday(.abbreviated))
+        return "Start \(next.session.title) · \(day)"
+    }
 
     private static func typicalPerWeek(_ plan: Plan) -> Int {
         var counts: [Int: Int] = [:]
