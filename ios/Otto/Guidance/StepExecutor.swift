@@ -38,6 +38,19 @@ protocol GuidanceOutputting: Sendable {
     func play(_ clip: CachedClip) async
     /// An executor finished on its own (timer at zero) — advance the step.
     func stepCompleted() async
+    /// A countdown is running toward this instant — the conductor arms a
+    /// local-notification backstop so even a TERMINATED app still alerts.
+    func timerArmed(deadline: Date) async
+    /// The countdown ended in-app (zero, paused, cancelled, done early) —
+    /// the backstop is cancelled.
+    func timerCleared() async
+}
+
+/// Backstops are optional plumbing; recorders and simple outputs need not
+/// care.
+extension GuidanceOutputting {
+    func timerArmed(deadline: Date) async {}
+    func timerCleared() async {}
 }
 
 /// One executor per step type. Same protocol, different completion

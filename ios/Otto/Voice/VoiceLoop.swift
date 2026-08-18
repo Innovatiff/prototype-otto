@@ -301,6 +301,27 @@ actor VoiceLoop {
         }
     }
 
+    /// Guided-session audio keepalive. On: the audio session starts (if
+    /// needed) and stays active — conversation teardown can no longer
+    /// deactivate it — so timers and cues survive the screen locking and
+    /// app switches. Off: the hold lifts; the next natural stop releases
+    /// audio as usual.
+    func setGuidanceHold(_ on: Bool) async {
+        if on {
+            do {
+                let components = try await ensureComponents()
+                try await components.session.beginGuidanceHold()
+            } catch {
+                emit(.notice("Audio unavailable: \(error.localizedDescription)"))
+            }
+        } else if let audioSession {
+            await audioSession.endGuidanceHold()
+            if state == .idle {
+                await audioSession.stop()
+            }
+        }
+    }
+
     /// Plays one cached guidance clip through the speaker pipeline — the
     /// guided session's zero-latency vocabulary. No state churn: guidance
     /// owns the audio while a session runs.

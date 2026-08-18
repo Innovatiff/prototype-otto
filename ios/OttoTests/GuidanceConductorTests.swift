@@ -42,6 +42,27 @@ private actor GuidanceRecorder {
     }
 }
 
+/// Records backstop arms/cancels in order.
+private actor FakeBackstop: GuidanceBackstopping {
+    private(set) var log: [String] = []
+
+    func arm(fireIn: TimeInterval, stepTitle: String) async {
+        log.append("arm:\(stepTitle)")
+    }
+
+    func cancel() async {
+        log.append("cancel")
+    }
+
+    func waitFor(count: Int, timeout: TimeInterval = 6) async -> [String] {
+        let deadline = Date().addingTimeInterval(timeout)
+        while log.count < count && Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return log
+    }
+}
+
 final class GuidanceConductorTests: XCTestCase {
 
     private var directory: URL!
@@ -218,6 +239,46 @@ final class GuidanceConductorTests: XCTestCase {
         XCTAssertEqual(snapshot.loggedValues["s1"], "135 pounds")
         XCTAssertEqual(snapshot.skippedSteps, [], "back un-marked the skip")
         XCTAssertNil(store.load())
+    }
+
+    // MARK: - The notification backstop
+
+    func testBackstopArmsAndClearsAroundTimerLifecycle() async {
+        let recorder = GuidanceRecorder()
+        let backstop = FakeBackstop()
+        let conductor = GuidanceConductor(
+            planId: "p1",
+            template: template(steps: [
+                Step(
+                    id: "t1", type: .timed, title: "Hold", cue: "Hold.",
+                    target: StepTarget(durationSec: 1), completion: .auto
+                )
+            ]),
+            progression: nil,
+            store: store,
+            backstop: backstop,
+            restOverride: 0.25,
+            speak: { await recorder.say($0) },
+            play: { await recorder.clip($0) }
+        )
+        await conductor.start()
+        var log = await backstop.waitFor(count: 1)
+        XCTAssertEqual(log, ["arm:Hold"], "a running timer arms its terminated-app backstop")
+
+        await conductor.handle(.pause)
+        log = await backstop.waitFor(count: 2)
+        XCTAssertEqual(log.last, "cancel", "pausing clears the backstop")
+
+        await conductor.handle(.resume)
+        log = await backstop.waitFor(count: 3)
+        XCTAssertEqual(log.last, "arm:Hold", "resuming re-arms at the new deadline")
+
+        // The timer completes in-app: cleared at zero, and again by finish —
+        // the notification can only ever fire for a dead app.
+        log = await backstop.waitFor(count: 5)
+        XCTAssertEqual(log, ["arm:Hold", "cancel", "arm:Hold", "cancel", "cancel"])
+        let lines = await recorder.waitForLines(count: 4)
+        XCTAssertEqual(Array(lines.suffix(2)), ["clip:timeUp", "clip:sessionDone"])
     }
 
     // MARK: - Pause freezes the clock

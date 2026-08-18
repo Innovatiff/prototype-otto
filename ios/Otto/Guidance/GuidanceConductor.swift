@@ -20,6 +20,8 @@ private struct StepOutput: GuidanceOutputting {
     func speak(_ text: String) async { await conductor.speakText(text) }
     func play(_ clip: CachedClip) async { await conductor.playClip(clip) }
     func stepCompleted() async { await conductor.stepCompleted(generation: generation) }
+    func timerArmed(deadline: Date) async { await conductor.timerArmed(deadline: deadline) }
+    func timerCleared() async { await conductor.timerCleared() }
 }
 
 /// The conductor: ties the state machine, the executors, and the voice
@@ -35,6 +37,9 @@ actor GuidanceConductor {
     private let progression: Progression?
     private let speakLine: @Sendable (String) async -> Void
     private let playClipLine: @Sendable (CachedClip) async -> Void
+    /// Local-notification backstop for running timers; nil in tests that
+    /// don't care.
+    private let backstop: (any GuidanceBackstopping)?
     /// Test override for every rest (between sets and between steps).
     private let restOverride: TimeInterval?
     private let resumed: Bool
@@ -52,6 +57,7 @@ actor GuidanceConductor {
         progression: Progression?,
         store: GuidanceStore,
         resumeFrom: GuidanceSnapshot? = nil,
+        backstop: (any GuidanceBackstopping)? = nil,
         restOverride: TimeInterval? = nil,
         speak: @escaping @Sendable (String) async -> Void,
         play: @escaping @Sendable (CachedClip) async -> Void
@@ -63,6 +69,7 @@ actor GuidanceConductor {
         self.progression = progression
         self.speakLine = speak
         self.playClipLine = play
+        self.backstop = backstop
         self.restOverride = restOverride
         self.resumed = (resumeFrom?.currentStepIndex ?? 0) > 0
     }
@@ -162,6 +169,20 @@ actor GuidanceConductor {
     func stepCompleted(generation: Int) async {
         guard generation == stepGeneration else { return }
         await advanceAfterCompletion()
+    }
+
+    /// A countdown started (or resumed): arm the terminated-app backstop.
+    func timerArmed(deadline: Date) async {
+        let title = await session.currentStep?.title ?? template.title
+        await backstop?.arm(
+            fireIn: deadline.timeIntervalSinceNow,
+            stepTitle: title
+        )
+    }
+
+    /// The countdown ended in-app — the backstop must not fire.
+    func timerCleared() async {
+        await backstop?.cancel()
     }
 
     // MARK: - Advancement
@@ -286,6 +307,8 @@ actor GuidanceConductor {
     }
 
     private func finishSession(early: Bool) async {
+        // However the session ends, no backstop may outlive it.
+        await backstop?.cancel()
         await playClipLine(early ? .stoppedEarly : .sessionDone)
         emit(.finished(early: early, snapshot: await session.currentSnapshot))
         eventContinuation?.finish()

@@ -134,7 +134,28 @@ final class AudioSessionController {
         setState(.active)
     }
 
+    /// While a guided session runs, the audio session and engine stay live
+    /// even when no cue is playing — that continuous audio rendering is what
+    /// keeps timers running behind a locked screen (UIBackgroundModes:
+    /// audio). Otto speaks real cues throughout, so this is the legitimate
+    /// use of the mode.
+    private(set) var guidanceHold = false
+
+    func beginGuidanceHold() throws {
+        guidanceHold = true
+        try start()
+    }
+
+    /// Ends the hold. The session stays active until the next natural
+    /// stop() — VoiceLoop's teardown or the app going quiet.
+    func endGuidanceHold() {
+        guidanceHold = false
+    }
+
     func stop() {
+        // A guided session outlives any single conversation; its hold wins
+        // over conversation teardown.
+        guard !guidanceHold else { return }
         engine.stop()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         setState(.inactive)

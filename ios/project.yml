@@ -37,6 +37,29 @@ targets:
       # Everything under Otto/, including generated Models/ and (once you drop
       # it in) GoogleService-Info.plist, which XcodeGen adds as a resource.
       - path: Otto
+        excludes:
+          - Info.plist
+    # A real (generated, gitignored) Info.plist instead of INFOPLIST_KEY_
+    # build settings: UIBackgroundModes is an array those keys can't express,
+    # and Step 7's HealthKit strings land here too.
+    info:
+      path: Otto/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # Guided sessions keep the audio session live and speak cues with the
+        # screen locked — a workout timer that dies mid-set is useless. Otto
+        # genuinely plays audio for the whole session, which is the
+        # legitimate, App Store-compliant use of this mode.
+        UIBackgroundModes: [audio]
+        NSMicrophoneUsageDescription: "Otto listens so you can talk to it."
+        NSSpeechRecognitionUsageDescription: "Otto transcribes your speech on this device to understand you."
+        # Required for a physical device to reach the dev server on the Mac's
+        # LAN IP — without it iOS denies local-network connections outright.
+        NSLocalNetworkUsageDescription: "Otto connects to your development server on your local network."
+        NSContactsUsageDescription: "Otto looks up the person you name so you can text them."
+        NSCalendarsFullAccessUsageDescription: "Otto reads your calendar to prepare your day and flag conflicts, and adds events only when you confirm them."
     dependencies:
       - package: firebase-ios-sdk
         product: FirebaseAuth
@@ -56,17 +79,6 @@ targets:
         # under MainActor-by-default isolation their Codable conformances
         # cannot compile. Do not flip this to MainActor.
         SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
-
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Otto listens so you can talk to it."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Otto transcribes your speech on this device to understand you."
-        # Required for a physical device to reach the dev server on the Mac's
-        # LAN IP — without it iOS denies local-network connections outright.
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Otto connects to your development server on your local network."
-        INFOPLIST_KEY_NSContactsUsageDescription: "Otto looks up the person you name so you can text them."
-        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Otto reads your calendar to prepare your day and flag conflicts, and adds events only when you confirm them."
 
         # Simulator needs no signing team; set DEVELOPMENT_TEAM here once the
         # Apple Developer Program membership lands.

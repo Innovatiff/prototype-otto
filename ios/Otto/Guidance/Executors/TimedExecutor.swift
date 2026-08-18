@@ -80,7 +80,7 @@ actor TimedExecutor: StepExecutor {
         cue = step.cue
         await output.speak(step.cue)
         let seconds = step.target?.durationSec.map(TimeInterval.init) ?? Self.fallbackSeconds
-        startCountdown(seconds: seconds)
+        await startCountdown(seconds: seconds)
     }
 
     /// Direct entry for rests (no cue, no step). Injectable warning
@@ -89,14 +89,16 @@ actor TimedExecutor: StepExecutor {
         seconds: TimeInterval,
         warningLead: TimeInterval = 10,
         minimumForWarning: TimeInterval = 12
-    ) {
+    ) async {
         ticker?.cancel()
-        core = TimedCore(
+        let fresh = TimedCore(
             seconds: seconds,
             now: Date(),
             warningLead: warningLead,
             minimumForWarning: minimumForWarning
         )
+        core = fresh
+        await output.timerArmed(deadline: fresh.deadline)
         runTicker()
     }
 
@@ -106,6 +108,7 @@ actor TimedExecutor: StepExecutor {
             // "done" on a timer ends it early, honestly — no zero clip.
             ticker?.cancel()
             core = nil
+            await output.timerCleared()
             return .completed
         case .repeatCue:
             if let cue { await output.speak(cue) }
@@ -118,9 +121,13 @@ actor TimedExecutor: StepExecutor {
         case .pause:
             ticker?.cancel()
             core?.pause(now: Date())
+            await output.timerCleared()
             return .passToSession
         case .resume:
             core?.resume(now: Date())
+            if let core {
+                await output.timerArmed(deadline: core.deadline)
+            }
             runTicker()
             return .passToSession
         case .skip, .back, .stop, .logValue:
@@ -129,9 +136,13 @@ actor TimedExecutor: StepExecutor {
     }
 
     func cancel() async {
+        let hadTimer = core != nil
         ticker?.cancel()
         ticker = nil
         core = nil
+        if hadTimer {
+            await output.timerCleared()
+        }
     }
 
     var remainingSeconds: TimeInterval? {
@@ -170,6 +181,8 @@ actor TimedExecutor: StepExecutor {
         }
         if Task.isCancelled { return }
         core = nil
+        // Completed in-app: the notification backstop must not fire too.
+        await output.timerCleared()
         await output.play(.timeUp)
         if let onFinished {
             await onFinished()
