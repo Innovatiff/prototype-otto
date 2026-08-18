@@ -27,7 +27,12 @@ import { tryEmbed } from "../memory/embed.js";
 import { adaptPlan, PlanAdaptationError } from "../plans/adapt.js";
 import { generatePlan, PlanGenerationError } from "../plans/generate.js";
 import { PlanConstraints, PlanDomain } from "../plans/interview.js";
-import { loadActivePlan, recordPlanCreation, saveNewPlan } from "../plans/store.js";
+import {
+  loadActivePlan,
+  loadSessionRecords,
+  recordPlanCreation,
+  saveNewPlan,
+} from "../plans/store.js";
 import { summaryLine } from "../plans/summarize.js";
 
 // ── Inputs (mirror tools/definitions.ts; the model is validated, not trusted) ──
@@ -480,6 +485,9 @@ async function adaptPlanTool(
   if (active === null) {
     return failure(`No active ${input.domain} plan to adapt.`);
   }
+  // What actually happened informs the patch: real loads beat assumed
+  // ones, and repeatedly skipped steps are substitution candidates.
+  const records = await loadSessionRecords(ctx.uid, active.id, 8).catch(() => []);
   try {
     const adapted = await adaptPlan({
       userId: ctx.uid,
@@ -487,6 +495,7 @@ async function adaptPlanTool(
       plan: active,
       change: input.change,
       now: ctx.now,
+      records,
     });
     await saveNewPlan(adapted.plan);
     // Adaptations do NOT touch the meter — same wrapper shape, no count.

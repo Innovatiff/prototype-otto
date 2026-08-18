@@ -12,6 +12,9 @@ actor CountedExecutor: StepExecutor {
     private let output: any GuidanceOutputting
     private let injectedRest: TimeInterval?
     private let restWarningMinimum: TimeInterval
+    /// What they actually did last session ("135 pounds") — spoken with
+    /// the target: progressive overload works from reality, not the plan.
+    private let reference: String?
 
     private var step: Step?
     private var currentSet = 1
@@ -21,11 +24,13 @@ actor CountedExecutor: StepExecutor {
     init(
         output: any GuidanceOutputting,
         restSeconds: TimeInterval? = nil,
-        restWarningMinimum: TimeInterval = 12
+        restWarningMinimum: TimeInterval = 12,
+        reference: String? = nil
     ) {
         self.output = output
         self.injectedRest = restSeconds
         self.restWarningMinimum = restWarningMinimum
+        self.reference = reference
     }
 
     func begin(_ step: Step) async {
@@ -34,6 +39,9 @@ actor CountedExecutor: StepExecutor {
         totalSets = max(1, step.target?.sets ?? 1)
         if let target = GuidancePhrases.targetLine(step.target) {
             await output.speak(target)
+        }
+        if let reference {
+            await output.speak("Last time: \(reference).")
         }
         await output.speak(step.cue)
     }

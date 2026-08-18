@@ -170,7 +170,7 @@ final class ConversationModel {
         self.plansModel = plansModel
         let voiceLoop = VoiceLoop(auth: auth)
         self.voiceLoop = voiceLoop
-        self.guidance = GuidanceRuntime(voiceLoop: voiceLoop)
+        self.guidance = GuidanceRuntime(voiceLoop: voiceLoop, auth: auth)
         self.bargeThresholdDb =
             (UserDefaults.standard.object(forKey: Self.bargeThresholdKey) as? Float) ?? -30
         self.sessionId = UserDefaults.standard.string(forKey: Self.sessionKey)

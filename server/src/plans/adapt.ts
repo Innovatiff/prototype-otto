@@ -9,7 +9,14 @@
  * generation. Otto confirms in one sentence.
  */
 import type Anthropic from "@anthropic-ai/sdk";
-import { Plan, Progression, ScheduledSession, Session, Step } from "@otto/shared";
+import {
+  Plan,
+  Progression,
+  ScheduledSession,
+  Session,
+  Step,
+  type SessionRecord,
+} from "@otto/shared";
 import { z } from "zod";
 
 import { getAnthropicClient } from "../llm/anthropic.js";
@@ -339,17 +346,32 @@ RULES
 - The past already happened: only entries from today's dayOffset onward may
   change. Reshape what remains; never rewrite completed days.
 - Ops address entries by sessionId + their CURRENT dayOffset in the plan.
+- RECENT SESSIONS show what ACTUALLY happened. Trust logged values over
+  the plan's assumed loads when adjusting; steps skipped repeatedly are
+  telling you something — substitute them, don't re-prescribe them.
 - summary is ONE spoken sentence, plain and final:
   "Swapped overhead pressing out for two weeks. Everything else stands."
 
 Call emit_patch exactly once.`;
 
-function buildAdaptMessage(plan: Plan, change: string, now: Date): string {
+export function buildAdaptMessage(
+  plan: Plan,
+  change: string,
+  now: Date,
+  records: readonly SessionRecord[] = [],
+): string {
   const week = planWeek(plan, now);
   const dayOffset = Math.max(
     0,
     Math.floor((now.getTime() - new Date(plan.createdAt).getTime()) / 86_400_000),
   );
+  const recent = records.slice(0, 8).map((record) => ({
+    sessionId: record.sessionId,
+    completedAt: record.completedAt,
+    endedEarly: record.endedEarly,
+    skippedSteps: record.skippedSteps,
+    loggedValues: record.loggedValues,
+  }));
   return [
     "THE CURRENT PLAN:",
     JSON.stringify({
@@ -361,6 +383,9 @@ function buildAdaptMessage(plan: Plan, change: string, now: Date): string {
     "",
     `Today is dayOffset ${dayOffset} (week ${week} of ${Math.ceil(plan.meta.horizonDays / 7)}).`,
     "",
+    ...(recent.length > 0
+      ? ["RECENT SESSIONS (newest first — what actually happened):", JSON.stringify(recent), ""]
+      : []),
     `WHAT CHANGED: ${change}`,
   ].join("\n");
 }
@@ -384,9 +409,14 @@ export async function adaptPlan(input: {
   plan: Plan;
   change: string;
   now: Date;
+  /** Recent session records — what actually happened, newest first. */
+  records?: readonly SessionRecord[];
 }): Promise<AdaptedPlan> {
   const messages: Anthropic.MessageParam[] = [
-    { role: "user", content: buildAdaptMessage(input.plan, input.change, input.now) },
+    {
+      role: "user",
+      content: buildAdaptMessage(input.plan, input.change, input.now, input.records ?? []),
+    },
   ];
 
   let lastErrors: string[] = [];

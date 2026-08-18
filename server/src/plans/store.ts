@@ -5,7 +5,7 @@
  * transactionally. Clients get read-only access via rules; every write goes
  * through this module on the server.
  */
-import { Plan } from "@otto/shared";
+import { Plan, SessionRecord } from "@otto/shared";
 
 import { COLLECTIONS, db } from "../firestore.js";
 import { logInfo } from "../log.js";
@@ -77,6 +77,42 @@ function parseAll(docs: FirebaseFirestore.QueryDocumentSnapshot[]): Plan[] {
     }
   }
   return plans;
+}
+
+// ── Session records (the adaptation loop's raw material) ────────────
+
+export async function saveSessionRecord(record: SessionRecord): Promise<void> {
+  await db().collection(COLLECTIONS.sessionRecords).doc(record.id).set(record);
+  logInfo("session_record_saved", {
+    userId: record.ownerId,
+    planId: record.planId,
+    sessionId: record.sessionId,
+    durationSec: record.durationSec,
+    endedEarly: record.endedEarly,
+  });
+}
+
+/** Newest first. Equality-only query; sorted here (per-plan counts are small). */
+export async function loadSessionRecords(
+  uid: string,
+  planId: string,
+  limit = 50,
+): Promise<SessionRecord[]> {
+  const snapshot = await db()
+    .collection(COLLECTIONS.sessionRecords)
+    .where("ownerId", "==", uid)
+    .where("planId", "==", planId)
+    .limit(500)
+    .get();
+  const records: SessionRecord[] = [];
+  for (const doc of snapshot.docs) {
+    const parsed = SessionRecord.safeParse(doc.data());
+    if (parsed.success) {
+      records.push(parsed.data);
+    }
+  }
+  records.sort((a, b) => b.completedAt.localeCompare(a.completedAt));
+  return records.slice(0, limit);
 }
 
 // ── Metering (count only; enforcement is Phase 7's) ─────────────────

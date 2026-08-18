@@ -216,6 +216,72 @@ struct PlanMeta: Codable, Hashable, Sendable {
     }
 }
 
+struct PlanProgressSummary: Codable, Hashable, Sendable {
+    var planId: String
+    var records: Int
+    var scheduledToDate: Int
+    var missedToDate: Int
+    var missedThisWeek: Int
+    var lastCompletedAt: Date?
+    var substitutionCandidates: [SubstitutionCandidate]
+    var latestLoggedValues: [String: String]
+
+    init(
+        planId: String,
+        records: Int,
+        scheduledToDate: Int,
+        missedToDate: Int,
+        missedThisWeek: Int,
+        lastCompletedAt: Date? = nil,
+        substitutionCandidates: [SubstitutionCandidate],
+        latestLoggedValues: [String: String]
+    ) {
+        self.planId = planId
+        self.records = records
+        self.scheduledToDate = scheduledToDate
+        self.missedToDate = missedToDate
+        self.missedThisWeek = missedThisWeek
+        self.lastCompletedAt = lastCompletedAt
+        self.substitutionCandidates = substitutionCandidates
+        self.latestLoggedValues = latestLoggedValues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case planId
+        case records
+        case scheduledToDate
+        case missedToDate
+        case missedThisWeek
+        case lastCompletedAt
+        case substitutionCandidates
+        case latestLoggedValues
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.planId = try container.decode(String.self, forKey: .planId)
+        self.records = try container.decode(Int.self, forKey: .records)
+        self.scheduledToDate = try container.decode(Int.self, forKey: .scheduledToDate)
+        self.missedToDate = try container.decode(Int.self, forKey: .missedToDate)
+        self.missedThisWeek = try container.decode(Int.self, forKey: .missedThisWeek)
+        self.lastCompletedAt = try container.decodeIfPresent(Date.self, forKey: .lastCompletedAt)
+        self.substitutionCandidates = try container.decode([SubstitutionCandidate].self, forKey: .substitutionCandidates)
+        self.latestLoggedValues = try container.decode([String: String].self, forKey: .latestLoggedValues)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.planId, forKey: .planId)
+        try container.encode(self.records, forKey: .records)
+        try container.encode(self.scheduledToDate, forKey: .scheduledToDate)
+        try container.encode(self.missedToDate, forKey: .missedToDate)
+        try container.encode(self.missedThisWeek, forKey: .missedThisWeek)
+        try container.encodeIfPresent(self.lastCompletedAt, forKey: .lastCompletedAt)
+        try container.encode(self.substitutionCandidates, forKey: .substitutionCandidates)
+        try container.encode(self.latestLoggedValues, forKey: .latestLoggedValues)
+    }
+}
+
 enum PlanStatus: String, Codable, Hashable, Sendable, CaseIterable {
     case active
     case superseded
@@ -407,6 +473,168 @@ struct Session: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+struct SessionRecord: Codable, Hashable, Sendable, Identifiable {
+    var id: String
+    var ownerId: String
+    var planId: String
+    var sessionId: String
+    var scheduledDate: Date?
+    var startedAt: Date
+    var completedAt: Date
+    var completedSteps: [String]
+    var skippedSteps: [String]
+    var loggedValues: [String: String]
+    var durationSec: Int
+    var endedEarly: Bool
+
+    init(
+        id: String,
+        ownerId: String,
+        planId: String,
+        sessionId: String,
+        scheduledDate: Date? = nil,
+        startedAt: Date,
+        completedAt: Date,
+        completedSteps: [String],
+        skippedSteps: [String],
+        loggedValues: [String: String],
+        durationSec: Int,
+        endedEarly: Bool
+    ) {
+        self.id = id
+        self.ownerId = ownerId
+        self.planId = planId
+        self.sessionId = sessionId
+        self.scheduledDate = scheduledDate
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+        self.completedSteps = completedSteps
+        self.skippedSteps = skippedSteps
+        self.loggedValues = loggedValues
+        self.durationSec = durationSec
+        self.endedEarly = endedEarly
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case ownerId
+        case planId
+        case sessionId
+        case scheduledDate
+        case startedAt
+        case completedAt
+        case completedSteps
+        case skippedSteps
+        case loggedValues
+        case durationSec
+        case endedEarly
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.ownerId = try container.decode(String.self, forKey: .ownerId)
+        self.planId = try container.decode(String.self, forKey: .planId)
+        self.sessionId = try container.decode(String.self, forKey: .sessionId)
+        self.scheduledDate = try container.decodeIfPresent(Date.self, forKey: .scheduledDate)
+        self.startedAt = try container.decode(Date.self, forKey: .startedAt)
+        self.completedAt = try container.decode(Date.self, forKey: .completedAt)
+        self.completedSteps = try container.decode([String].self, forKey: .completedSteps)
+        self.skippedSteps = try container.decode([String].self, forKey: .skippedSteps)
+        self.loggedValues = try container.decode([String: String].self, forKey: .loggedValues)
+        self.durationSec = try container.decode(Int.self, forKey: .durationSec)
+        self.endedEarly = try container.decode(Bool.self, forKey: .endedEarly)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.ownerId, forKey: .ownerId)
+        try container.encode(self.planId, forKey: .planId)
+        try container.encode(self.sessionId, forKey: .sessionId)
+        try container.encodeIfPresent(self.scheduledDate, forKey: .scheduledDate)
+        try container.encode(self.startedAt, forKey: .startedAt)
+        try container.encode(self.completedAt, forKey: .completedAt)
+        try container.encode(self.completedSteps, forKey: .completedSteps)
+        try container.encode(self.skippedSteps, forKey: .skippedSteps)
+        try container.encode(self.loggedValues, forKey: .loggedValues)
+        try container.encode(self.durationSec, forKey: .durationSec)
+        try container.encode(self.endedEarly, forKey: .endedEarly)
+    }
+}
+
+struct SessionRecordUpload: Codable, Hashable, Sendable {
+    var sessionId: String
+    var scheduledDate: Date?
+    var startedAt: Date
+    var completedAt: Date
+    var completedSteps: [String]
+    var skippedSteps: [String]
+    var loggedValues: [String: String]
+    var durationSec: Int
+    var endedEarly: Bool
+
+    init(
+        sessionId: String,
+        scheduledDate: Date? = nil,
+        startedAt: Date,
+        completedAt: Date,
+        completedSteps: [String],
+        skippedSteps: [String],
+        loggedValues: [String: String],
+        durationSec: Int,
+        endedEarly: Bool
+    ) {
+        self.sessionId = sessionId
+        self.scheduledDate = scheduledDate
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+        self.completedSteps = completedSteps
+        self.skippedSteps = skippedSteps
+        self.loggedValues = loggedValues
+        self.durationSec = durationSec
+        self.endedEarly = endedEarly
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionId
+        case scheduledDate
+        case startedAt
+        case completedAt
+        case completedSteps
+        case skippedSteps
+        case loggedValues
+        case durationSec
+        case endedEarly
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.sessionId = try container.decode(String.self, forKey: .sessionId)
+        self.scheduledDate = try container.decodeIfPresent(Date.self, forKey: .scheduledDate)
+        self.startedAt = try container.decode(Date.self, forKey: .startedAt)
+        self.completedAt = try container.decode(Date.self, forKey: .completedAt)
+        self.completedSteps = try container.decode([String].self, forKey: .completedSteps)
+        self.skippedSteps = try container.decode([String].self, forKey: .skippedSteps)
+        self.loggedValues = try container.decode([String: String].self, forKey: .loggedValues)
+        self.durationSec = try container.decode(Int.self, forKey: .durationSec)
+        self.endedEarly = try container.decode(Bool.self, forKey: .endedEarly)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.sessionId, forKey: .sessionId)
+        try container.encodeIfPresent(self.scheduledDate, forKey: .scheduledDate)
+        try container.encode(self.startedAt, forKey: .startedAt)
+        try container.encode(self.completedAt, forKey: .completedAt)
+        try container.encode(self.completedSteps, forKey: .completedSteps)
+        try container.encode(self.skippedSteps, forKey: .skippedSteps)
+        try container.encode(self.loggedValues, forKey: .loggedValues)
+        try container.encode(self.durationSec, forKey: .durationSec)
+        try container.encode(self.endedEarly, forKey: .endedEarly)
+    }
+}
+
 struct Step: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var type: StepType
@@ -520,4 +748,34 @@ enum StepType: String, Codable, Hashable, Sendable, CaseIterable {
     case counted
     case checklist
     case prompt
+}
+
+struct SubstitutionCandidate: Codable, Hashable, Sendable {
+    var stepId: String
+    var skips: Int
+
+    init(
+        stepId: String,
+        skips: Int
+    ) {
+        self.stepId = stepId
+        self.skips = skips
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case stepId
+        case skips
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.stepId = try container.decode(String.self, forKey: .stepId)
+        self.skips = try container.decode(Int.self, forKey: .skips)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.stepId, forKey: .stepId)
+        try container.encode(self.skips, forKey: .skips)
+    }
 }

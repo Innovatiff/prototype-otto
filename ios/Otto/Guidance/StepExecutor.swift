@@ -73,17 +73,19 @@ extension StepExecutor {
 enum StepExecutors {
     /// The runtime's dispatch: step type → executor. Steps arrive already
     /// RESOLVED (progression overrides applied) — see GuidanceMath.
-    /// `restSeconds` overrides the between-sets interval (tests).
+    /// `restSeconds` overrides the between-sets interval (tests);
+    /// `reference` is last session's logged value for this step.
     static func make(
         for step: Step,
         output: any GuidanceOutputting,
-        restSeconds: TimeInterval? = nil
+        restSeconds: TimeInterval? = nil,
+        reference: String? = nil
     ) -> any StepExecutor {
         switch step.type {
         case .timed:
             return TimedExecutor(output: output)
         case .counted:
-            return CountedExecutor(output: output, restSeconds: restSeconds)
+            return CountedExecutor(output: output, restSeconds: restSeconds, reference: reference)
         case .checklist:
             return ChecklistExecutor(output: output)
         case .prompt:

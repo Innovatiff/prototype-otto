@@ -153,6 +153,19 @@ final class GuidanceExecutorTests: XCTestCase {
         await counted.cancel()
     }
 
+    func testReferenceWeightSpeaksWithTheTarget() async {
+        let recorder = OutputRecorder()
+        let counted = CountedExecutor(output: recorder, restSeconds: 30, reference: "135 pounds")
+        await counted.begin(step(.counted))
+        let events = await recorder.events
+        XCTAssertEqual(events, [
+            "speak:3 sets of 8 at 20 kilos.",
+            "speak:Last time: 135 pounds.",
+            "speak:Brace and go.",
+        ])
+        await counted.cancel()
+    }
+
     func testStatusLinesAnchorTheReturnFromAQuestion() async {
         let recorder = OutputRecorder()
         let counted = CountedExecutor(output: recorder, restSeconds: 30)

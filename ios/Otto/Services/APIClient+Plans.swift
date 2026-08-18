@@ -16,6 +16,25 @@ extension APIClient {
         return try decodeBody(Plan.self, from: data)
     }
 
+    /// POST /plans/{id}/sessions — a finished guided session's record.
+    /// Queued on-device (RecordOutbox) so offline sessions lose nothing.
+    func storeSessionRecord(planId: String, upload: SessionRecordUpload) async throws {
+        let body: Data
+        do {
+            body = try OttoCoding.encoder.encode(upload)
+        } catch {
+            throw APIError.decoding(underlying: error)
+        }
+        _ = try await jsonRequest(path: "plans/\(planId)/sessions", method: "POST", body: body)
+    }
+
+    /// GET /plans/{id}/summary — adherence, substitution candidates, and
+    /// the latest logged values (next session's reference weights).
+    func planSummary(planId: String) async throws -> PlanProgressSummary {
+        let data = try await jsonRequest(path: "plans/\(planId)/summary", method: "GET")
+        return try decodeBody(PlanProgressSummary.self, from: data)
+    }
+
     /// POST /plans/{id}/calendar-events — after the device has created the
     /// plan's sessions in EventKit and VERIFIED each by read-back, it
     /// reports the event ids so the server stores them on the plan

@@ -40,6 +40,9 @@ actor GuidanceConductor {
     /// Local-notification backstop for running timers; nil in tests that
     /// don't care.
     private let backstop: (any GuidanceBackstopping)?
+    /// stepId → last session's logged value ("135 pounds"), spoken with
+    /// counted targets so overload works from what actually happened.
+    private let references: [String: String]
     /// Test override for every rest (between sets and between steps).
     private let restOverride: TimeInterval?
     private let resumed: Bool
@@ -58,6 +61,7 @@ actor GuidanceConductor {
         store: GuidanceStore,
         resumeFrom: GuidanceSnapshot? = nil,
         backstop: (any GuidanceBackstopping)? = nil,
+        references: [String: String] = [:],
         restOverride: TimeInterval? = nil,
         speak: @escaping @Sendable (String) async -> Void,
         play: @escaping @Sendable (CachedClip) async -> Void
@@ -70,6 +74,7 @@ actor GuidanceConductor {
         self.speakLine = speak
         self.playClipLine = play
         self.backstop = backstop
+        self.references = references
         self.restOverride = restOverride
         self.resumed = (resumeFrom?.currentStepIndex ?? 0) > 0
     }
@@ -197,7 +202,12 @@ actor GuidanceConductor {
         emit(.stepChanged(index: progress.index, total: progress.total, step: step))
         stepGeneration += 1
         let output = StepOutput(conductor: self, generation: stepGeneration)
-        let next = StepExecutors.make(for: step, output: output, restSeconds: restOverride)
+        let next = StepExecutors.make(
+            for: step,
+            output: output,
+            restSeconds: restOverride,
+            reference: references[step.id]
+        )
         executor = next
         await next.begin(step)
     }

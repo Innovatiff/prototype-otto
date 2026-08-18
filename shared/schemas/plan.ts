@@ -152,3 +152,72 @@ export const PlanListResponse = z.object({
   plans: z.array(PlanSummary),
 });
 export type PlanListResponse = z.infer<typeof PlanListResponse>;
+
+/**
+ * What the device reports when a guided session ends — POST
+ * /plans/:planId/sessions. Written from the runtime's snapshot; queued
+ * on-device and retried when offline (a basement session must lose
+ * nothing).
+ */
+export const SessionRecordUpload = z.object({
+  /** The session TEMPLATE id within the plan. */
+  sessionId: zId,
+  /** The scheduled occurrence this run was for, when known. */
+  scheduledDate: isoDateTime.optional(),
+  startedAt: isoDateTime,
+  completedAt: isoDateTime,
+  completedSteps: z.array(zId).max(100),
+  skippedSteps: z.array(zId).max(100),
+  /** stepId → what actually happened, verbatim ("135 pounds"). */
+  loggedValues: z.record(z.string(), z.string()),
+  /** Wall-clock, start to end. */
+  durationSec: z.number().int().min(0),
+  endedEarly: z.boolean(),
+});
+export type SessionRecordUpload = z.infer<typeof SessionRecordUpload>;
+
+/** A stored session record — the upload plus server-owned identity. */
+export const SessionRecord = z.object({
+  id: zId,
+  ownerId: zId,
+  planId: zId,
+  sessionId: zId,
+  scheduledDate: isoDateTime.optional(),
+  startedAt: isoDateTime,
+  completedAt: isoDateTime,
+  completedSteps: z.array(zId).max(100),
+  skippedSteps: z.array(zId).max(100),
+  loggedValues: z.record(z.string(), z.string()),
+  durationSec: z.number().int().min(0),
+  endedEarly: z.boolean(),
+});
+export type SessionRecord = z.infer<typeof SessionRecord>;
+
+/** A step skipped in 2+ sessions — flagged for substitution. */
+export const SubstitutionCandidate = z.object({
+  stepId: zId,
+  skips: z.number().int().min(2),
+});
+export type SubstitutionCandidate = z.infer<typeof SubstitutionCandidate>;
+
+/**
+ * GET /plans/:planId/summary — the adaptation loop's aggregate view.
+ * Progressive overload reads latestLoggedValues (what actually happened,
+ * newest wins); repeatedly skipped steps surface as substitution
+ * candidates; missedThisWeek feeds Phase 6's proactive check-in.
+ */
+export const PlanProgressSummary = z.object({
+  planId: zId,
+  records: z.number().int().min(0),
+  /** Scheduled occurrences whose day has fully passed. */
+  scheduledToDate: z.number().int().min(0),
+  missedToDate: z.number().int().min(0),
+  /** Rolling 7 days: scheduled minus attended. ≥2 triggers a check-in. */
+  missedThisWeek: z.number().int().min(0),
+  lastCompletedAt: isoDateTime.optional(),
+  /** Steps skipped in 2+ sessions — flag for substitution. */
+  substitutionCandidates: z.array(SubstitutionCandidate),
+  /** stepId → most recent logged value across records. */
+  latestLoggedValues: z.record(z.string(), z.string()),
+});
+export type PlanProgressSummary = z.infer<typeof PlanProgressSummary>;

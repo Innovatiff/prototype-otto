@@ -9,7 +9,10 @@ import { Router, type Request, type Response } from "express";
 import {
   Plan,
   PlanCalendarEventsRequest,
+  SessionRecord,
+  SessionRecordUpload,
   type PlanCalendarEvent,
+  type PlanProgressSummary,
   type PlanSummary,
 } from "@otto/shared";
 
@@ -17,6 +20,7 @@ import { AppError, IdParam, parseOrThrow } from "../errors.js";
 import { COLLECTIONS, db } from "../firestore.js";
 import { logInfo } from "../log.js";
 import { requireUid } from "../middleware/auth.js";
+import { loadSessionRecords, saveSessionRecord } from "../plans/store.js";
 
 export const plansRouter = Router();
 
@@ -60,12 +64,112 @@ plansRouter.get("/", async (req: Request, res: Response): Promise<void> => {
 plansRouter.get("/:planId", async (req: Request, res: Response): Promise<void> => {
   const uid = requireUid(req);
   const planId = parseOrThrow(IdParam, req.params.planId, "plan id");
+  const plan = await readOwnedPlan(planId, uid);
+  res.json(plan);
+});
+
+async function readOwnedPlan(planId: string, uid: string): Promise<Plan> {
   const snapshot = await db().collection(COLLECTIONS.plans).doc(planId).get();
   const parsed = Plan.safeParse(snapshot.data());
   if (!parsed.success || parsed.data.ownerId !== uid) {
     throw new AppError(404, "not_found", "Plan not found.");
   }
-  res.json(parsed.data);
+  return parsed.data;
+}
+
+// ── Session records: the adaptation loop's raw material ─────────────
+
+/**
+ * The device reports a finished guided session. Records are additive and
+ * idempotent enough for the offline outbox: a retry after a lost response
+ * just writes a second record with a fresh id — rare, and harmless to the
+ * aggregates compared to losing a session.
+ */
+plansRouter.post("/:planId/sessions", async (req: Request, res: Response): Promise<void> => {
+  const uid = requireUid(req);
+  const planId = parseOrThrow(IdParam, req.params.planId, "plan id");
+  const upload = parseOrThrow(SessionRecordUpload, req.body, "session record");
+  const plan = await readOwnedPlan(planId, uid);
+  if (!plan.sessions.some((session) => session.id === upload.sessionId)) {
+    throw new AppError(400, "invalid_request", "Unknown session template for this plan.");
+  }
+  const record = SessionRecord.parse({
+    ...upload,
+    id: db().collection(COLLECTIONS.sessionRecords).doc().id,
+    ownerId: uid,
+    planId,
+  });
+  await saveSessionRecord(record);
+  res.status(201).json({ id: record.id });
+});
+
+/**
+ * The adherence math, pure: what was scheduled against what happened.
+ * "Missed" counts scheduled occurrences whose day fully passed with no
+ * record that week; a partial (ended-early) session still counts as
+ * showing up.
+ */
+export function summarizeRecords(
+  plan: Plan,
+  records: readonly SessionRecord[],
+  now: Date,
+): PlanProgressSummary {
+  const startMs = new Date(plan.createdAt).getTime();
+  const elapsedDays = Math.max(0, Math.floor((now.getTime() - startMs) / 86_400_000));
+  const scheduledToDate = plan.schedule.filter((entry) => entry.dayOffset < elapsedDays).length;
+
+  const weekAgoMs = now.getTime() - 7 * 86_400_000;
+  const scheduledThisWeek = plan.schedule.filter((entry) => {
+    const dayMs = startMs + entry.dayOffset * 86_400_000;
+    return dayMs >= weekAgoMs && entry.dayOffset < elapsedDays;
+  }).length;
+  const attendedThisWeek = records.filter(
+    (record) => new Date(record.completedAt).getTime() >= weekAgoMs,
+  ).length;
+
+  const skipCounts = new Map<string, number>();
+  for (const record of records) {
+    for (const stepId of new Set(record.skippedSteps)) {
+      skipCounts.set(stepId, (skipCounts.get(stepId) ?? 0) + 1);
+    }
+  }
+  const substitutionCandidates = [...skipCounts.entries()]
+    .filter(([, skips]) => skips >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .map(([stepId, skips]) => ({ stepId, skips }));
+
+  // Newest wins: walk oldest → newest so later sessions overwrite.
+  const latestLoggedValues: Record<string, string> = {};
+  const chronological = [...records].sort((a, b) => a.completedAt.localeCompare(b.completedAt));
+  for (const record of chronological) {
+    for (const [stepId, value] of Object.entries(record.loggedValues)) {
+      latestLoggedValues[stepId] = value;
+    }
+  }
+
+  const lastCompletedAt = records
+    .map((record) => record.completedAt)
+    .sort()
+    .at(-1);
+
+  return {
+    planId: plan.id,
+    records: records.length,
+    scheduledToDate,
+    missedToDate: Math.max(0, scheduledToDate - records.length),
+    missedThisWeek: Math.max(0, scheduledThisWeek - attendedThisWeek),
+    ...(lastCompletedAt !== undefined ? { lastCompletedAt } : {}),
+    substitutionCandidates,
+    latestLoggedValues,
+  };
+}
+
+plansRouter.get("/:planId/summary", async (req: Request, res: Response): Promise<void> => {
+  const uid = requireUid(req);
+  const planId = parseOrThrow(IdParam, req.params.planId, "plan id");
+  const plan = await readOwnedPlan(planId, uid);
+  const records = await loadSessionRecords(uid, planId, 200);
+  res.json(summarizeRecords(plan, records, new Date()));
 });
 
 /**

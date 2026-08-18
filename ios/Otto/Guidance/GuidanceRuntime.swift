@@ -36,17 +36,24 @@ final class GuidanceRuntime {
     // MARK: - Plumbing
 
     private let voiceLoop: VoiceLoop
+    private let auth: any AuthProvider
     private let store = GuidanceStore()
     private let backstop = GuidanceBackstop()
     /// HealthKit is additive, never required — a denial changes nothing
     /// about the session except that no workout is saved.
     private let health = HealthService()
+    /// Store-and-forward for session records — an offline session (basement
+    /// gym, airplane mode) loses nothing; the record lands next time.
+    private let outbox = RecordOutbox()
     private var conductor: GuidanceConductor?
     private var eventsTask: Task<Void, Never>?
     private var workoutTracking = false
+    private var activePlanId: String?
+    private var activeScheduledDate: Date?
 
-    init(voiceLoop: VoiceLoop) {
+    init(voiceLoop: VoiceLoop, auth: any AuthProvider) {
         self.voiceLoop = voiceLoop
+        self.auth = auth
     }
 
     /// A fresh in-progress snapshot from a killed app, if one exists — the
@@ -66,14 +73,27 @@ final class GuidanceRuntime {
         domain: String,
         template: Session,
         progression: Progression?,
+        scheduledDate: Date? = nil,
         resumeFrom: GuidanceSnapshot? = nil
     ) async {
         guard conductor == nil else { return }
+        activePlanId = planId
+        activeScheduledDate = scheduledDate
         if domain == "fitness", HealthService.isAvailable {
             if await health.requestAuthorization() {
                 await health.beginWorkout(at: Date())
                 workoutTracking = true
             }
+        }
+        // Anything still queued from an offline session goes first; then
+        // last session's logged values become this session's reference
+        // weights ("Last time: 135 pounds."). Both best-effort — offline
+        // just means no references today.
+        await flushOutbox()
+        var references: [String: String] = [:]
+        if let client = makeClient(),
+           let summary = try? await client.planSummary(planId: planId) {
+            references = summary.latestLoggedValues
         }
         let conductor = GuidanceConductor(
             planId: planId,
@@ -82,6 +102,7 @@ final class GuidanceRuntime {
             store: store,
             resumeFrom: resumeFrom,
             backstop: backstop,
+            references: references,
             speak: { [voiceLoop] text in await voiceLoop.announce(text) },
             play: { [voiceLoop] clip in await voiceLoop.playClip(clip) }
         )
@@ -194,7 +215,44 @@ final class GuidanceRuntime {
             workoutTracking = false
             await health.finishWorkout(at: Date())
         }
-        // Step 8: write the SessionRecord from lastSnapshot here.
+        // The SessionRecord: disk first, then the server — a record must
+        // survive airplane mode and a force-quit alike.
+        if let snapshot = lastSnapshot, let planId = activePlanId {
+            let completedAt = Date()
+            let upload = SessionRecordUpload(
+                sessionId: snapshot.sessionId,
+                scheduledDate: activeScheduledDate,
+                startedAt: snapshot.startedAt,
+                completedAt: completedAt,
+                completedSteps: snapshot.completedSteps,
+                skippedSteps: snapshot.skippedSteps,
+                loggedValues: snapshot.loggedValues,
+                durationSec: Int(max(0, completedAt.timeIntervalSince(snapshot.startedAt))),
+                endedEarly: early
+            )
+            outbox.append(PendingRecord(planId: planId, upload: upload))
+            await flushOutbox()
+        }
+        activePlanId = nil
+        activeScheduledDate = nil
+    }
+
+    private func flushOutbox() async {
+        guard let client = makeClient() else { return }
+        await outbox.flush { pending in
+            (try? await client.storeSessionRecord(
+                planId: pending.planId,
+                upload: pending.upload
+            )) != nil
+        }
+    }
+
+    private func makeClient() -> APIClient? {
+        let urlString =
+            UserDefaults.standard.string(forKey: DebugModel.serverURLKey) ?? "http://localhost:8080"
+        guard let url = URL(string: urlString), url.scheme != nil else { return nil }
+        guard auth.currentUserId != nil else { return nil }
+        return APIClient(baseURL: url, auth: auth)
     }
 
     /// The finished screen was dismissed; back to nothing.
