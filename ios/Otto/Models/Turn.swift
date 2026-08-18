@@ -65,19 +65,22 @@ struct TurnRequest: Codable, Hashable, Sendable {
     var clientTimestamp: Date
     var timezone: String
     var sessionId: String?
+    var events: [CalendarEvent]?
 
     init(
         turnId: String,
         text: String,
         clientTimestamp: Date,
         timezone: String,
-        sessionId: String? = nil
+        sessionId: String? = nil,
+        events: [CalendarEvent]? = nil
     ) {
         self.turnId = turnId
         self.text = text
         self.clientTimestamp = clientTimestamp
         self.timezone = timezone
         self.sessionId = sessionId
+        self.events = events
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -86,6 +89,7 @@ struct TurnRequest: Codable, Hashable, Sendable {
         case clientTimestamp
         case timezone
         case sessionId
+        case events
     }
 
     init(from decoder: any Decoder) throws {
@@ -95,6 +99,7 @@ struct TurnRequest: Codable, Hashable, Sendable {
         self.clientTimestamp = try container.decode(Date.self, forKey: .clientTimestamp)
         self.timezone = try container.decode(String.self, forKey: .timezone)
         self.sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
+        self.events = try container.decodeIfPresent([CalendarEvent].self, forKey: .events)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -104,5 +109,6 @@ struct TurnRequest: Codable, Hashable, Sendable {
         try container.encode(self.clientTimestamp, forKey: .clientTimestamp)
         try container.encode(self.timezone, forKey: .timezone)
         try container.encodeIfPresent(self.sessionId, forKey: .sessionId)
+        try container.encodeIfPresent(self.events, forKey: .events)
     }
 }

@@ -169,6 +169,7 @@ final class ConversationModel {
             guard let self else { return }
             Task { await self.runBrief() }
         }
+        refreshCalendarContext()
         if UserDefaults.standard.bool(forKey: Self.briefEnabledKey) {
             let (hour, minute) = storedWakeTime()
             Task { _ = await self.reminders.scheduleBrief(hour: hour, minute: minute) }
@@ -313,6 +314,7 @@ final class ConversationModel {
                 // Reached after done AND after barge-in — either way the
                 // otto row is finished growing.
                 ottoTurnOpen = false
+                refreshCalendarContext()
             }
             if newState == .idle {
                 // The conversation can end (stop button, interruption) while
@@ -669,6 +671,20 @@ final class ConversationModel {
 
     func dismissBrief() {
         withAnimation(.snappy) { briefCard = nil }
+    }
+
+    /// Pushes today+tomorrow's events into the loop for ambient context.
+    /// Silent by design: reads only when permission already exists, so this
+    /// can run every turn without ever prompting.
+    private func refreshCalendarContext() {
+        Task {
+            let dayStart = Foundation.Calendar.current.startOfDay(for: Date())
+            let end =
+                Foundation.Calendar.current.date(byAdding: .day, value: 2, to: dayStart)
+                ?? dayStart.addingTimeInterval(2 * 86_400)
+            let events = await self.calendarService.eventsIfAuthorized(from: dayStart, to: end)
+            await self.voiceLoop.setCalendarContext(events)
+        }
     }
 
     private func makeClient() -> APIClient? {

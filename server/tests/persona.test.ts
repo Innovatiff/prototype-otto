@@ -8,8 +8,11 @@ import {
   buildStaticPrefix,
   buildSystemPrompt,
   formatMemories,
+  formatSchedule,
   formatTasks,
+  formatWeatherLine,
 } from "../src/persona/system.js";
+import { estimateTokens } from "../src/router/selectModel.js";
 
 const NOW = new Date("2026-07-31T18:05:00.000Z");
 const TS = "2026-07-31T17:00:00.000Z";
@@ -29,11 +32,15 @@ test("the static prefix is byte-identical across turns with different dynamic st
     now: NOW,
     timezone: "America/Toronto",
     addressAllowed: true,
+    events: [],
+    weather: null,
   });
   const b = buildSystemPrompt(user("Boss"), [memory("no pork")], [], {
     now: new Date("2026-08-01T09:00:00.000Z"),
     timezone: "Europe/Paris",
     addressAllowed: false,
+    events: [],
+    weather: null,
   });
   assert.equal(a.staticPrefix, b.staticPrefix);
 });
@@ -124,6 +131,8 @@ test("the dynamic part carries clock, gate ruling, memories, and tasks", () => {
     now: NOW,
     timezone: "America/Toronto",
     addressAllowed: true,
+    events: [],
+    weather: null,
   });
   assert.ok(parts.dynamic.includes("(America/Toronto)"));
   assert.ok(parts.dynamic.includes("July 31, 2026"));
@@ -137,6 +146,8 @@ test("the gate ruling flips to a prohibition when disallowed", () => {
     now: NOW,
     timezone: "America/Toronto",
     addressAllowed: false,
+    events: [],
+    weather: null,
   });
   assert.ok(parts.dynamic.includes("Do not use any term of address this turn."));
 });
@@ -146,6 +157,8 @@ test("an invalid timezone falls back to UTC instead of throwing", () => {
     now: NOW,
     timezone: "Not/AZone",
     addressAllowed: true,
+    events: [],
+    weather: null,
   });
   assert.ok(parts.dynamic.includes("(UTC)"));
 });
@@ -153,4 +166,94 @@ test("an invalid timezone falls back to UTC instead of throwing", () => {
 test("empty blocks render explicit markers, not blanks", () => {
   assert.equal(formatMemories([]), "(nothing retrieved)");
   assert.equal(formatTasks([]), "(none)");
+  assert.equal(formatWeatherLine(null), "(unavailable)");
+});
+
+// ── Schedule + weather context (Phase 3 Step 6) ─────────────────────
+
+import type { CalendarEvent, CurrentWeather } from "@otto/shared";
+
+function calendarEvent(id: string, startIso: string, title = "Meeting"): CalendarEvent {
+  return {
+    id,
+    title,
+    startsAt: startIso,
+    endsAt: new Date(Date.parse(startIso) + 3600_000).toISOString(),
+    isAllDay: false,
+  };
+}
+
+test("the schedule splits today and tomorrow by wall date, one line each", () => {
+  // NOW is 2:05 PM Toronto on Jul 31.
+  const schedule = formatSchedule(
+    [
+      calendarEvent("a", "2026-07-31T19:00:00.000Z", "Dentist"),
+      calendarEvent("b", "2026-08-01T13:00:00.000Z", "Standup"),
+      // 1:30 AM UTC Aug 1 is still July 31 in Toronto — must land under Today.
+      calendarEvent("c", "2026-08-01T01:30:00.000Z", "Dinner"),
+    ],
+    NOW,
+    "America/Toronto",
+  );
+  const [todayPart = "", tomorrowPart = ""] = schedule.split("Tomorrow:");
+  assert.ok(todayPart.includes("Dentist"));
+  assert.ok(todayPart.includes("Dinner"));
+  assert.ok(tomorrowPart.includes("Standup"));
+  assert.ok(schedule.includes("3:00 PM-4:00 PM Dentist"));
+  assert.ok(!schedule.includes("id"), "no event ids in the prompt");
+});
+
+test("empty days say so, per-day caps add a (+N more) marker", () => {
+  assert.ok(formatSchedule([], NOW, "America/Toronto").includes("(no events)"));
+  const many = Array.from({ length: 20 }, (_, i) =>
+    calendarEvent(`e${i}`, new Date(Date.parse("2026-07-31T10:00:00.000Z") + i * 1800_000).toISOString()),
+  );
+  const schedule = formatSchedule(many, NOW, "America/Toronto");
+  assert.ok(schedule.includes("(+8 more)"));
+});
+
+test("the schedule+weather block stays under the 400-token budget", () => {
+  const longTitle = "Quarterly planning session with the extended leadership group";
+  const events = Array.from({ length: 60 }, (_, i) =>
+    calendarEvent(
+      `e${i}`,
+      new Date(Date.parse("2026-07-31T04:00:00.000Z") + i * 3600_000).toISOString(),
+      `${longTitle} ${i}`,
+    ),
+  );
+  const weather: CurrentWeather = {
+    temperatureC: 9,
+    apparentC: 7,
+    precipitationMm: 0,
+    precipitationProbability: 62,
+    windKmh: 44,
+    weatherCode: 61,
+    advice: ["rain", "wind"],
+  };
+  const block = formatSchedule(events, NOW, "America/Toronto");
+  const total = estimateTokens(block) + estimateTokens(formatWeatherLine(weather));
+  assert.ok(total < 400, `schedule+weather ≈${total} tokens`);
+  assert.ok(formatWeatherLine(weather).includes("[advice: rain+wind]"));
+});
+
+test("the dynamic part carries the schedule and weather sections", () => {
+  const parts = buildSystemPrompt(user("Boss"), [], [], {
+    now: NOW,
+    timezone: "America/Toronto",
+    addressAllowed: true,
+    events: [calendarEvent("a", "2026-07-31T19:00:00.000Z", "Dentist")],
+    weather: {
+      temperatureC: 12,
+      apparentC: 10,
+      precipitationMm: 0,
+      precipitationProbability: 10,
+      windKmh: 8,
+      weatherCode: 1,
+      advice: [],
+    },
+  });
+  assert.ok(parts.dynamic.includes("SCHEDULE (from the device calendar"));
+  assert.ok(parts.dynamic.includes("Dentist"));
+  assert.ok(parts.dynamic.includes("WEATHER NOW"));
+  assert.ok(parts.dynamic.includes("12C feels 10C"));
 });

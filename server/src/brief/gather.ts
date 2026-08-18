@@ -17,13 +17,12 @@ import { Task as TaskSchema } from "@otto/shared";
 import { COLLECTIONS, db } from "../firestore.js";
 import { errorFields, logWarning } from "../log.js";
 import { parseMemoryDoc } from "../memory/docs.js";
-import { weatherProvider } from "../services/weather/index.js";
+import { cachedCurrentWeather, DEFAULT_LAT, DEFAULT_LON } from "../services/weather/index.js";
+import { wallDate } from "../util/time.js";
 import { loadBriefSummary } from "./store.js";
 
-/** Default coordinates (Toronto) until a home-location SETTING exists.
- *  Location services are out of scope by product decision. */
-export const DEFAULT_LAT = 43.6532;
-export const DEFAULT_LON = -79.3832;
+export { DEFAULT_LAT, DEFAULT_LON };
+export { wallDate };
 
 export interface BriefContext {
   /** Wall date in the user's timezone, YYYY-MM-DD. */
@@ -35,20 +34,6 @@ export interface BriefContext {
   /** Newest goal/context memories, at most 5. */
   carried: Memory[];
   yesterdaySummary: string | null;
-}
-
-/** The wall date (YYYY-MM-DD) of an instant in a timezone; UTC on bad tz. */
-export function wallDate(at: Date, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(at);
-  } catch {
-    return at.toISOString().slice(0, 10);
-  }
 }
 
 /** The instant a task fires, when it has one. */
@@ -138,12 +123,7 @@ export async function gatherBriefContext(
   const yesterday = wallDate(new Date(now.getTime() - 24 * 3600 * 1000), request.timezone);
 
   const [weather, tasks, carried, yesterdaySummary] = await Promise.all([
-    weatherProvider()
-      .current(request.lat ?? DEFAULT_LAT, request.lon ?? DEFAULT_LON)
-      .catch((err: unknown): null => {
-        logWarning("brief_weather_failed", { userId: uid, ...errorFields(err) });
-        return null;
-      }),
+    cachedCurrentWeather(request.lat ?? DEFAULT_LAT, request.lon ?? DEFAULT_LON),
     loadActiveTasks(uid).catch((err: unknown): Task[] => {
       logWarning("brief_tasks_failed", { userId: uid, ...errorFields(err) });
       return [];

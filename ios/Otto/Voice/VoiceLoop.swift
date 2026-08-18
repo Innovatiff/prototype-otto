@@ -199,6 +199,9 @@ actor VoiceLoop {
     private let auth: any AuthProvider
     private var serverURL: URL?
     private var sessionId: String?
+    /// Today's and tomorrow's events, refreshed by the model; rides on every
+    /// turn so schedule questions need no tool call.
+    private var calendarContext: [CalendarEvent] = []
     private var locale: Locale?
 
     private var audioSession: AudioSessionController?
@@ -244,6 +247,11 @@ actor VoiceLoop {
 
     func disarmUtteranceCapture() {
         captureNextFinalUtterance = false
+    }
+
+    /// Ambient calendar context for the next turns; [] when unavailable.
+    func setCalendarContext(_ events: [CalendarEvent]) {
+        calendarContext = events
     }
 
     /// Speaks locally — no server turn — through the same speaker pipeline,
@@ -524,7 +532,8 @@ actor VoiceLoop {
             text: transcript,
             clientTimestamp: Date(),
             timezone: TimeZone.current.identifier,
-            sessionId: sessionId
+            sessionId: sessionId,
+            events: calendarContext.isEmpty ? nil : calendarContext
         )
         let client = APIClient(baseURL: serverURL, auth: auth)
         turnTask = Task {

@@ -14,7 +14,17 @@
  * the session's stored assistant turns — the model gets a binary instruction
  * each turn instead of being trusted to self-limit.
  */
-import type { ConversationMessage, Memory, Task, UserProfile } from "@otto/shared";
+import type {
+  CalendarEvent,
+  ConversationMessage,
+  CurrentWeather,
+  Memory,
+  Task,
+  UserProfile,
+} from "@otto/shared";
+
+import { estimateTokens } from "../router/selectModel.js";
+import { wallDate, wallTime } from "../util/time.js";
 
 /** addressTerm value meaning "no term of address, ever". */
 export const NO_ADDRESS_TERM = "none";
@@ -86,6 +96,10 @@ export interface PersonaContext {
   timezone: string;
   /** Whether the address term may be used this turn (see addressTermAllowed). */
   addressAllowed: boolean;
+  /** Today's and tomorrow's events from the client; [] when unavailable. */
+  events: CalendarEvent[];
+  /** Cached current conditions; null when unavailable. */
+  weather: CurrentWeather | null;
 }
 
 export interface SystemPromptParts {
@@ -139,6 +153,68 @@ function formatClock(now: Date, timezone: string): string {
   }
 }
 
+const MAX_TODAY_EVENTS = 12;
+const MAX_TOMORROW_EVENTS = 8;
+const MAX_TITLE_CHARS = 40;
+
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+function eventLine(event: CalendarEvent, timezone: string): string {
+  const span = event.isAllDay
+    ? "all day"
+    : `${wallTime(event.startsAt, timezone)}-${wallTime(event.endsAt, timezone)}`;
+  const where = event.location !== undefined ? ` @ ${truncate(event.location, 24)}` : "";
+  return `- ${span} ${truncate(event.title, MAX_TITLE_CHARS)}${where}`;
+}
+
+/**
+ * Today's and tomorrow's events, one compressed line each — no IDs, no
+ * descriptions. Hard-capped per day so the block stays small; answers like
+ * "am I free Thursday afternoon?" come from here with no tool call.
+ */
+export function formatSchedule(events: CalendarEvent[], now: Date, timezone: string): string {
+  const today = wallDate(now, timezone);
+  const tomorrow = wallDate(new Date(now.getTime() + 24 * 3600 * 1000), timezone);
+  const byDay = (day: string): CalendarEvent[] =>
+    events
+      .filter((event) => wallDate(new Date(event.startsAt), timezone) === day)
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+  const lines: string[] = [];
+  for (const [label, day, cap] of [
+    ["Today", today, MAX_TODAY_EVENTS],
+    ["Tomorrow", tomorrow, MAX_TOMORROW_EVENTS],
+  ] as const) {
+    const dayEvents = byDay(day);
+    lines.push(`${label}:`);
+    if (dayEvents.length === 0) {
+      lines.push("(no events)");
+    } else {
+      for (const event of dayEvents.slice(0, cap)) {
+        lines.push(eventLine(event, timezone));
+      }
+      if (dayEvents.length > cap) {
+        lines.push(`(+${dayEvents.length - cap} more)`);
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
+/** One line of current conditions, advice included. */
+export function formatWeatherLine(weather: CurrentWeather | null): string {
+  if (weather === null) {
+    return "(unavailable)";
+  }
+  const advice = weather.advice.length > 0 ? ` [advice: ${weather.advice.join("+")}]` : "";
+  return (
+    `${weather.temperatureC.toFixed(0)}C feels ${weather.apparentC.toFixed(0)}C, ` +
+    `rain ${weather.precipitationProbability}%, wind ${weather.windKmh.toFixed(0)}km/h${advice}`
+  );
+}
+
 /** `- [category] content` lines, or an explicit empty marker. */
 export function formatMemories(memories: Memory[]): string {
   if (memories.length === 0) {
@@ -177,12 +253,30 @@ export function buildSystemPrompt(
       ? `You may address them as ${user.addressTerm} this turn, within the rules above.`
       : "Do not use any term of address this turn.";
 
+  // The schedule+weather block answers "am I free Thursday afternoon?" and
+  // "what's the weather like?" with no tool call. Budgeted: the per-day caps
+  // keep it well under 400 tokens; the guard below is the backstop.
+  let scheduleBlock = formatSchedule(context.events, context.now, context.timezone);
+  const weatherLine = formatWeatherLine(context.weather);
+  if (estimateTokens(scheduleBlock) + estimateTokens(weatherLine) > 400) {
+    scheduleBlock = `${scheduleBlock
+      .split("\n")
+      .slice(0, 24)
+      .join("\n")}\n(truncated)`;
+  }
+
   const dynamic = [
     "CURRENT CONTEXT",
     `Now: ${formatClock(context.now, context.timezone)}`,
     "",
     "ADDRESS THIS TURN",
     addressLine,
+    "",
+    "SCHEDULE (from the device calendar; conflicts are detected on-device)",
+    scheduleBlock,
+    "",
+    "WEATHER NOW",
+    weatherLine,
     "",
     "MEMORIES",
     formatMemories(memories),

@@ -19,6 +19,7 @@ import { requireUid } from "../middleware/auth.js";
 import { addressTermAllowed, buildSystemPrompt } from "../persona/system.js";
 import { classify } from "../router/classify.js";
 import { estimateTokens, route, TIER_MODELS, type RouteInput } from "../router/selectModel.js";
+import { cachedCurrentWeather } from "../services/weather/index.js";
 import { appendExchange, loadOrCreateSession } from "../sessions/index.js";
 import { recordCostEvent } from "../telemetry/cost.js";
 import { executeToolUse, loadTasks } from "../tools/execute.js";
@@ -84,7 +85,7 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
   // loaded in parallel (retrieval includes an embedding round trip). Loading
   // before routing lets contextTokens reflect the real payload size.
   const now = new Date();
-  const [session, user, memories, activeTasks] = await Promise.all([
+  const [session, user, memories, activeTasks, weather] = await Promise.all([
     loadOrCreateSession(uid, turn.sessionId, now),
     loadUserProfile(uid, now),
     retrieveMemories(uid, text, now),
@@ -92,6 +93,9 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       logError("active_tasks_load_failed", { userId: uid, ...errorFields(err) });
       return [];
     }),
+    // 10-minute cache; never throws. Weather in the dynamic block answers
+    // "what's the weather like?" with no tool call.
+    cachedCurrentWeather(),
   ]);
   const messages: LlmMessage[] = [
     ...session.messages.map((m): LlmMessage => ({ role: m.role, content: m.content })),
@@ -103,6 +107,8 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     now,
     timezone: turn.timezone,
     addressAllowed: addressTermAllowed(user.addressTerm, session.messages),
+    events: turn.events ?? [],
+    weather,
   });
 
   const intent = classify(text);

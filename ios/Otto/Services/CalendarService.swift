@@ -61,6 +61,19 @@ final class CalendarService {
             .sorted { $0.startsAt < $1.startsAt }
     }
 
+    /// Events WITHOUT prompting: empty unless full access already exists.
+    /// Used for ambient conversation context, which must never trigger the
+    /// permission dialog — that happens in context (brief, schedule asks).
+    func eventsIfAuthorized(from: Date, to: Date) -> [CalendarEvent] {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
+            return []
+        }
+        let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
+        return store.events(matching: predicate)
+            .compactMap(Self.domainEvent(from:))
+            .sorted { $0.startsAt < $1.startsAt }
+    }
+
     /// One event by identifier — the read-back path for verified writes.
     func event(withId id: String) async throws -> CalendarEvent? {
         try await ensureAccess()

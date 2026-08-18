@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CalendarEvent } from "./calendar.js";
 import { isoDateTime, zId } from "./common.js";
 
 /** A single user utterance sent to /converse. */
@@ -14,6 +15,13 @@ export const TurnRequest = z.object({
    * id in the `done` event data — clients adopt whatever comes back.
    */
   sessionId: zId.optional(),
+  /**
+   * Today's and tomorrow's calendar events, attached by the client ONLY when
+   * calendar permission already exists (context never prompts). The server
+   * compresses them into the dynamic prompt so schedule questions need no
+   * tool call.
+   */
+  events: z.array(CalendarEvent).max(60).optional(),
 });
 export type TurnRequest = z.infer<typeof TurnRequest>;
 

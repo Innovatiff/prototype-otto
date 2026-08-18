@@ -7,6 +7,7 @@
  */
 import { getAnthropicClient } from "../llm/anthropic.js";
 import { TIER_MODELS } from "../router/selectModel.js";
+import { wallTime } from "../util/time.js";
 import type { BriefContext } from "./gather.js";
 
 export const BRIEF_MODEL = TIER_MODELS.sonnet;
@@ -41,20 +42,6 @@ const SUMMARY_PROMPT =
   "Summarize this morning brief in at most 60 words of plain prose for " +
   "tomorrow's continuity: what was flagged, what was prioritized, what was " +
   "carried over. No greetings, no formatting.";
-
-/** Times as the user hears them, in their timezone. */
-function wallTime(iso: string, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(new Date(iso));
-  } catch {
-    return iso.slice(11, 16);
-  }
-}
 
 /** The gathered context, serialized compactly for the synthesis call. */
 export function serializeContext(context: BriefContext): string {
