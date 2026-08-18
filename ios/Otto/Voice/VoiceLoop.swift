@@ -601,7 +601,9 @@ actor VoiceLoop {
                         emit(.planProgress(stage))
                     }
                 case .planReady:
-                    if let plan = event.data?.decoded(as: Plan.self) {
+                    // data = { plan, plansCreatedThisMonth } — the meter
+                    // rides the response for the UI to show later (Phase 7).
+                    if let plan = event.data?.objectValue?["plan"]?.decoded(as: Plan.self) {
                         emit(.planReady(plan))
                     }
                 case .planFailed:

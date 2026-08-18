@@ -27,7 +27,7 @@ import { tryEmbed } from "../memory/embed.js";
 import { adaptPlan, PlanAdaptationError } from "../plans/adapt.js";
 import { generatePlan, PlanGenerationError } from "../plans/generate.js";
 import { PlanConstraints, PlanDomain } from "../plans/interview.js";
-import { loadActivePlan, saveNewPlan } from "../plans/store.js";
+import { loadActivePlan, recordPlanCreation, saveNewPlan } from "../plans/store.js";
 import { summaryLine } from "../plans/summarize.js";
 
 // ── Inputs (mirror tools/definitions.ts; the model is validated, not trusted) ──
@@ -420,10 +420,19 @@ async function generatePlanTool(input: PlanConstraints, ctx: ToolContext): Promi
     // Persisted before the client hears about it; any previous active plan
     // in this domain is superseded in the same transaction.
     await saveNewPlan(generated.plan);
-    ctx.emit({ type: "plan_ready", data: generated.plan });
+    // Metering counts successful GENERATIONS only (adaptations never call
+    // this) — and a metering hiccup must never fail a plan that saved.
+    let plansCreatedThisMonth: number | null = null;
+    try {
+      plansCreatedThisMonth = await recordPlanCreation(ctx.uid, ctx.now);
+    } catch (err) {
+      logWarning("plan_meter_failed", { userId: ctx.uid, ...errorFields(err) });
+    }
+    ctx.emit({ type: "plan_ready", data: { plan: generated.plan, plansCreatedThisMonth } });
     return {
       result: JSON.stringify({
         created: true,
+        plansCreatedThisMonth,
         summary: summaryLine(generated.plan),
         speak:
           "Say a summary from these facts in under 60 words, honest about " +
@@ -480,7 +489,8 @@ async function adaptPlanTool(
       now: ctx.now,
     });
     await saveNewPlan(adapted.plan);
-    ctx.emit({ type: "plan_ready", data: adapted.plan });
+    // Adaptations do NOT touch the meter — same wrapper shape, no count.
+    ctx.emit({ type: "plan_ready", data: { plan: adapted.plan, plansCreatedThisMonth: null } });
     return {
       result: JSON.stringify({
         adapted: true,

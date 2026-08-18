@@ -79,6 +79,49 @@ function parseAll(docs: FirebaseFirestore.QueryDocumentSnapshot[]): Plan[] {
   return plans;
 }
 
+// ── Metering (count only; enforcement is Phase 7's) ─────────────────
+
+/** UTC month key, e.g. "2026-08". Metering months roll over in UTC. */
+export function meterMonthKey(now: Date): string {
+  return now.toISOString().slice(0, 7);
+}
+
+/**
+ * The counter's next value: same month increments, a new month (or absent /
+ * corrupt data) restarts at 1. Pure; the transaction below applies it.
+ */
+export function nextMeterValue(
+  stored: { month?: unknown; count?: unknown },
+  month: string,
+): number {
+  if (stored.month !== month) {
+    return 1;
+  }
+  const count = typeof stored.count === "number" && Number.isFinite(stored.count)
+    ? Math.max(0, Math.floor(stored.count))
+    : 0;
+  return count + 1;
+}
+
+/**
+ * Counts one successful plan GENERATION on the user document. Adaptations
+ * never call this; neither does anything else. Returns the new count.
+ */
+export async function recordPlanCreation(uid: string, now: Date): Promise<number> {
+  const month = meterMonthKey(now);
+  const ref = db().collection(COLLECTIONS.users).doc(uid);
+  return await db().runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    const data = snapshot.data() ?? {};
+    const count = nextMeterValue(
+      { month: data["plansCountMonth"], count: data["plansCreatedThisMonth"] },
+      month,
+    );
+    tx.set(ref, { plansCreatedThisMonth: count, plansCountMonth: month }, { merge: true });
+    return count;
+  });
+}
+
 /** 1-indexed week the user is in, clamped to the plan's span. */
 export function planWeek(plan: Plan, now: Date): number {
   const elapsedDays = Math.floor(

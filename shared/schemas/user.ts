@@ -13,5 +13,12 @@ export const UserProfile = z.object({
   ownerId: zId,
   addressTerm: z.string().min(1).max(40).default("Boss"),
   createdAt: isoDateTime,
+  /**
+   * Plan metering (subscriptions land in Phase 7; counting starts now).
+   * Successful GENERATIONS only — adaptations never count. The month key
+   * is UTC "YYYY-MM"; a new month resets the counter. No limit enforced.
+   */
+  plansCreatedThisMonth: z.number().int().min(0).optional(),
+  plansCountMonth: z.string().optional(),
 });
 export type UserProfile = z.infer<typeof UserProfile>;

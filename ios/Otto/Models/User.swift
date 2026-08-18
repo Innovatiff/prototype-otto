@@ -16,21 +16,29 @@ struct UserProfile: Codable, Hashable, Sendable {
     var ownerId: String
     var addressTerm: String
     var createdAt: Date
+    var plansCreatedThisMonth: Int?
+    var plansCountMonth: String?
 
     init(
         ownerId: String,
         addressTerm: String = "Boss",
-        createdAt: Date
+        createdAt: Date,
+        plansCreatedThisMonth: Int? = nil,
+        plansCountMonth: String? = nil
     ) {
         self.ownerId = ownerId
         self.addressTerm = addressTerm
         self.createdAt = createdAt
+        self.plansCreatedThisMonth = plansCreatedThisMonth
+        self.plansCountMonth = plansCountMonth
     }
 
     private enum CodingKeys: String, CodingKey {
         case ownerId
         case addressTerm
         case createdAt
+        case plansCreatedThisMonth
+        case plansCountMonth
     }
 
     init(from decoder: any Decoder) throws {
@@ -38,6 +46,8 @@ struct UserProfile: Codable, Hashable, Sendable {
         self.ownerId = try container.decode(String.self, forKey: .ownerId)
         self.addressTerm = try container.decodeIfPresent(String.self, forKey: .addressTerm) ?? "Boss"
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.plansCreatedThisMonth = try container.decodeIfPresent(Int.self, forKey: .plansCreatedThisMonth)
+        self.plansCountMonth = try container.decodeIfPresent(String.self, forKey: .plansCountMonth)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -45,5 +55,7 @@ struct UserProfile: Codable, Hashable, Sendable {
         try container.encode(self.ownerId, forKey: .ownerId)
         try container.encode(self.addressTerm, forKey: .addressTerm)
         try container.encode(self.createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(self.plansCreatedThisMonth, forKey: .plansCreatedThisMonth)
+        try container.encodeIfPresent(self.plansCountMonth, forKey: .plansCountMonth)
     }
 }

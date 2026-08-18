@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { PlanCalendarEventsRequest, type Plan, type Step } from "@otto/shared";
 
 import { applyPatch } from "../src/plans/adapt.js";
+import { meterMonthKey, nextMeterValue } from "../src/plans/store.js";
 import { invalidCalendarLinks } from "../src/routes/plans.js";
 
 const NOW = new Date("2026-08-18T12:00:00.000Z");
@@ -99,6 +100,22 @@ test("a patch carries links for untouched entries and drops removed/shifted ones
       { sessionId: "upper-a", dayOffset: 2, eventId: "ev-2" },
     ]);
   }
+});
+
+// ── Plan metering (count only; no enforcement) ──────────────────────
+
+test("the meter increments within a month and resets across months", () => {
+  assert.equal(meterMonthKey(NOW), "2026-08");
+  // First plan ever, and first plan of a new month, both count 1.
+  assert.equal(nextMeterValue({}, "2026-08"), 1);
+  assert.equal(nextMeterValue({ month: "2026-07", count: 9 }, "2026-08"), 1);
+  // Same month increments.
+  assert.equal(nextMeterValue({ month: "2026-08", count: 2 }, "2026-08"), 3);
+  // Corrupt data restarts the count instead of propagating garbage.
+  assert.equal(nextMeterValue({ month: "2026-08", count: "many" }, "2026-08"), 1);
+  assert.equal(nextMeterValue({ month: "2026-08", count: Number.NaN }, "2026-08"), 1);
+  assert.equal(nextMeterValue({ month: "2026-08", count: -4 }, "2026-08"), 1);
+  assert.equal(nextMeterValue({ month: "2026-08", count: 2.9 }, "2026-08"), 3);
 });
 
 test("a plan without links produces a version without the field", () => {
