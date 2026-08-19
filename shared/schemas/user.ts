@@ -27,5 +27,12 @@ export const UserProfile = z.object({
    */
   quietHoursStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   quietHoursEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  /**
+   * How many CUSTOM automations currently exist (enabled or not — a cap
+   * you can dodge by disabling is no cap). Built-ins never count.
+   * Recounted from truth on every create/delete; enforcement (Lite: 3)
+   * lands in Phase 7 with subscriptions.
+   */
+  customAutomationCount: z.number().int().min(0).optional(),
 });
 export type UserProfile = z.infer<typeof UserProfile>;

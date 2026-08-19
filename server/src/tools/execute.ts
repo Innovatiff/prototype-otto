@@ -33,6 +33,7 @@ import {
   loadOwnerAutomations,
   mintAutomationId,
   saveAutomation,
+  syncCustomAutomationCount,
   updateAutomationScheduling,
 } from "../automations/store.js";
 import { COLLECTIONS, db } from "../firestore.js";
@@ -581,11 +582,20 @@ async function createAutomationTool(
     return failure(built.error);
   }
   await saveAutomation(built.automation);
+  // Tier meter (Lite caps at 3; enforcement is Phase 7's). Failure-isolated:
+  // a metering hiccup must never fail a created automation.
+  let customAutomationCount: number | null = null;
+  try {
+    customAutomationCount = await syncCustomAutomationCount(ctx.uid);
+  } catch (err) {
+    logWarning("automation_meter_failed", { userId: ctx.uid, ...errorFields(err) });
+  }
   return {
     result: JSON.stringify({
       created: true,
       label: built.automation.label,
       schedule: describeSchedule(built.automation.schedule),
+      customAutomationCount,
       speak:
         "Confirm in ONE short line using the schedule, e.g. " +
         "'Done. Every Friday at 3:30.' Nothing else.",
@@ -630,6 +640,11 @@ async function manageAutomationsTool(
       );
     }
     await deleteAutomationDoc(target.id);
+    try {
+      await syncCustomAutomationCount(ctx.uid);
+    } catch (err) {
+      logWarning("automation_meter_failed", { userId: ctx.uid, ...errorFields(err) });
+    }
     return {
       result: JSON.stringify({
         deleted: true,

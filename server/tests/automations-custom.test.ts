@@ -11,10 +11,12 @@ import type { Automation } from "@otto/shared";
 
 import {
   buildCustomAutomation,
+  countCustomAutomations,
   describeSchedule,
   enabledUpdateFields,
   formatTimeOfDay,
   isNothingToSay,
+  LITE_CUSTOM_AUTOMATION_CAP,
   matchAutomation,
   MAX_CUSTOM_AUTOMATIONS,
 } from "../src/automations/custom.js";
@@ -143,6 +145,21 @@ test("disable parks; enable re-arms fixed now and leaves relative to the next sy
     schedule: { kind: "relative_to_event", minutesBefore: 30, eventFilter: { minAttendees: 2 } },
   });
   assert.deepEqual(enabledUpdateFields(relative, true, NOW), { enabled: true, nextRunAt: null });
+});
+
+// ── Tier counting (enforcement is Phase 7's) ────────────────────────
+
+test("customs count enabled or not; built-ins never count", () => {
+  const automations = [
+    automation("c1"),
+    automation("c2", { enabled: false }),
+    automation("b1", { type: "morning_brief", label: "Morning brief" }),
+    automation("b2", { type: "meeting_prep", label: "Meeting prep", enabled: false }),
+  ];
+  assert.equal(countCustomAutomations(automations), 2);
+  assert.equal(countCustomAutomations([]), 0);
+  assert.equal(LITE_CUSTOM_AUTOMATION_CAP, 3);
+  assert.ok(LITE_CUSTOM_AUTOMATION_CAP < MAX_CUSTOM_AUTOMATIONS);
 });
 
 // ── The silence escape ──────────────────────────────────────────────

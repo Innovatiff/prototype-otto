@@ -19,6 +19,7 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { COLLECTIONS, db } from "../firestore.js";
 import { logWarning } from "../log.js";
+import { countCustomAutomations } from "./custom.js";
 import { readQuietHours, type QuietHours } from "./suppress.js";
 
 /** How long one tick owns a claimed automation before the claim expires. */
@@ -171,6 +172,23 @@ export async function applyManagementUpdate(
 /** Permanent removal (custom automations only; callers enforce that). */
 export async function deleteAutomationDoc(id: string): Promise<void> {
   await automationsCollection().doc(id).delete();
+}
+
+/**
+ * Recounts the owner's custom automations from truth and stamps the tier
+ * meter on the user document. Recount-not-increment: it cannot drift, and
+ * any missed update self-heals on the next create or delete. Returns the
+ * count. Callers treat failure as non-fatal — metering must never fail
+ * the user's action.
+ */
+export async function syncCustomAutomationCount(uid: string): Promise<number> {
+  const automations = await loadOwnerAutomations(uid);
+  const count = countCustomAutomations(automations);
+  await db()
+    .collection(COLLECTIONS.users)
+    .doc(uid)
+    .set({ customAutomationCount: count }, { merge: true });
+  return count;
 }
 
 export interface RunCompletion {

@@ -20,8 +20,20 @@ import { storeDeliverer, type Deliverer } from "./deliver.js";
 import type { AutomationHandler } from "./handlers.js";
 import { isValidTimezone, nextRunAt, parseRecurrence } from "./schedule.js";
 
-/** A sane runaway bound; tier enforcement (Lite: 3) is Phase 7's. */
+/** A sane runaway bound; tier enforcement is Phase 7's. */
 export const MAX_CUSTOM_AUTOMATIONS = 20;
+
+/**
+ * The Lite tier's cap, exported for Phase 7's enforcement. Counting is
+ * live now (customAutomationCount on the user document); nothing blocks
+ * yet.
+ */
+export const LITE_CUSTOM_AUTOMATION_CAP = 3;
+
+/** Customs count whether enabled or not; built-ins never count. */
+export function countCustomAutomations(automations: readonly Automation[]): number {
+  return automations.filter((automation) => automation.type === "custom").length;
+}
 
 export const CustomAutomationInput = z.object({
   label: z.string().min(1).max(120),

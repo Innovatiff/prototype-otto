@@ -44,6 +44,7 @@ import {
   loadOwnerAutomations,
   loadOwnerQuietHours,
   readOwnedAutomation,
+  syncCustomAutomationCount,
   updateAutomationScheduling,
   updateOwnerQuietHours,
 } from "../automations/store.js";
@@ -192,6 +193,7 @@ automationsUserRouter.delete(
         throw new AppError(400, "invalid_request", "Built-in automations can be disabled, not deleted.");
       }
       await deleteAutomationDoc(id);
+      await syncCustomAutomationCount(uid).catch(() => 0);
       logInfo("automation_deleted", { userId: uid, automationId: id });
       res.json({ ok: true });
     } catch (err) {
