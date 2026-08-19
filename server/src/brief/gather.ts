@@ -74,7 +74,8 @@ export function listCounts(tasks: Task[]): BriefListCount[] {
     });
 }
 
-async function loadActiveTasks(uid: string): Promise<Task[]> {
+/** Shared with the automation handlers (evening shutdown, meeting prep). */
+export async function loadActiveTasks(uid: string): Promise<Task[]> {
   const snapshot = await db()
     .collection(COLLECTIONS.tasks)
     .where("ownerId", "==", uid)

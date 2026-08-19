@@ -11,6 +11,7 @@ import { CalendarSyncRequest, type CalendarSyncResponse } from "@otto/shared";
 import { Router, type NextFunction, type Request, type Response } from "express";
 
 import { clampToWindow, storeCalendarView } from "../automations/calendarView.js";
+import { ensureBuiltInAutomations } from "../automations/defaults.js";
 import { rearmUpdates } from "../automations/rearm.js";
 import { isValidTimezone } from "../automations/schedule.js";
 import { loadOwnerAutomations, updateAutomationScheduling } from "../automations/store.js";
@@ -34,6 +35,13 @@ calendarRouter.post(
       await storeCalendarView(uid, events, request.timezone, now);
 
       const automations = await loadOwnerAutomations(uid);
+      // First sync is also first contact with automations: seed the five
+      // built-ins (idempotent — creates only what's missing).
+      try {
+        await ensureBuiltInAutomations(automations, uid, request.timezone, now);
+      } catch (err) {
+        logError("built_in_seed_failed", { userId: uid, ...errorFields(err) });
+      }
       const updates = rearmUpdates(automations, request.timezone, events, now);
       let rearmed = 0;
       for (const update of updates) {

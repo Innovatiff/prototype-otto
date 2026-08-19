@@ -20,6 +20,7 @@ export const COLLECTIONS = {
   sessionRecords: "session_records",
   automations: "automations",
   calendarViews: "calendar_views",
+  deliveries: "deliveries",
   costEvents: "cost_events",
   costDaily: "cost_daily",
 } as const;

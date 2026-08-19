@@ -79,6 +79,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Automation deliveries (the push log + engagement record). Written by
+    // the scheduler, read back only through the API.
+    match /deliveries/{deliveryId} {
+      allow read, write: if false;
+    }
+
     // Synced calendar views (the compressed 48-hour automation context)
     // are written through the API and read only by the scheduler. Not even
     // the owner reads them back — the phone already has the calendar.

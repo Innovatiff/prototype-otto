@@ -7,6 +7,7 @@
  */
 import express, { type Request, type Response } from "express";
 
+import { registerBuiltInHandlers } from "./automations/builtins.js";
 import { errorBody, errorMiddleware } from "./errors.js";
 import { errorFields, logError, logInfo } from "./log.js";
 import { requireAuth } from "./middleware/auth.js";
@@ -48,6 +49,9 @@ const port = Number(process.env.PORT ?? 8080);
 
 async function main(): Promise<void> {
   await loadSecrets();
+  // The tick dispatches by action kind; the built-ins must be registered
+  // before the first scheduler fire can arrive.
+  registerBuiltInHandlers();
   const server = app.listen(port, () => {
     logInfo("server_started", { port, nodeEnv: process.env.NODE_ENV ?? "development" });
   });

@@ -339,6 +339,21 @@ test("calendar_views: server-only — the owner cannot read back or forge their 
   await assertFails(deleteDoc(doc(alice, `calendar_views/${ALICE}`)));
 });
 
+test("deliveries: server-only — the owner cannot read the push log or forge opens", async () => {
+  await assertFails(getDoc(doc(alice, "deliveries/del-1")));
+  await assertFails(
+    getDocs(query(collection(alice, "deliveries"), where("ownerId", "==", ALICE))),
+  );
+  await assertFails(
+    setDoc(doc(alice, "deliveries/del-forged"), {
+      id: "del-forged",
+      ownerId: ALICE,
+      automationId: "auto-alice",
+      openedAt: "2026-08-19T12:00:00.000Z",
+    }),
+  );
+});
+
 test("cost_events: no client read or write, even by the user it concerns", async () => {
   await assertFails(getDoc(doc(alice, "cost_events/evt-1")));
   await assertFails(getDocs(query(collection(alice, "cost_events"), where("userId", "==", ALICE))));
