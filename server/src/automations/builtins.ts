@@ -26,6 +26,8 @@ import {
   briefPushBody,
   cleanWeekStreak,
   eveningFacts,
+  eventsOnDate,
+  weatherLine,
   hasEveningContent,
   hasWeeklyContent,
   overlapsIn,
@@ -88,7 +90,10 @@ const morningBrief: AutomationHandler = async (automation, ctx) => {
   if (existing !== null) {
     return "suppressed";
   }
-  const events = ctx.calendar !== null && !ctx.calendar.stale ? ctx.calendar.events : [];
+  // The synced view spans 48 hours; the brief is about TODAY. Tomorrow's
+  // meetings must not become "First up" lines or phantom conflicts.
+  const synced = ctx.calendar !== null && !ctx.calendar.stale ? ctx.calendar.events : [];
+  const events = eventsOnDate(synced, automation.timezone, today);
   const briefEvents = asBriefEvents(events);
   const overlaps = overlapsIn(events);
   const request: BriefRequest = {
@@ -101,11 +106,7 @@ const morningBrief: AutomationHandler = async (automation, ctx) => {
   // The push body is deterministic — reliable at 07:00 by construction.
   const body = briefPushBody(
     {
-      weatherLine:
-        context.weather === null
-          ? null
-          : `${context.weather.temperatureC.toFixed(0)} degrees` +
-            (context.weather.precipitationProbability >= 50 ? " and likely rain." : "."),
+      weatherLine: context.weather === null ? null : weatherLine(context.weather),
       todayEvents: events,
       overlaps,
       dueCount: context.dueTasks.length,

@@ -364,24 +364,30 @@ struct DeliveryResponseRequest: Codable, Hashable, Sendable {
 
 struct DeviceTokenRequest: Codable, Hashable, Sendable {
     var token: String
+    var timezone: String?
 
     init(
-        token: String
+        token: String,
+        timezone: String? = nil
     ) {
         self.token = token
+        self.timezone = timezone
     }
 
     private enum CodingKeys: String, CodingKey {
         case token
+        case timezone
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.token = try container.decode(String.self, forKey: .token)
+        self.timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
     }
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(self.token, forKey: .token)
+        try container.encodeIfPresent(self.timezone, forKey: .timezone)
     }
 }

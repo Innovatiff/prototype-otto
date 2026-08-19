@@ -296,6 +296,17 @@ final class ConversationModel {
             (UserDefaults.standard.object(forKey: Self.bargeThresholdKey) as? Float) ?? -30
         self.sessionId = UserDefaults.standard.string(forKey: Self.sessionKey)
         self.signedIn = auth.currentUserId != nil
+        // Wired HERE, not in activate(): a push tap that cold-launches the
+        // app reaches the notification delegate before the first frame's
+        // .task runs — the handler must already exist or the open report
+        // and deep link are silently dropped.
+        reminders.onAutomationResponse = { [weak self] push, action in
+            guard let self else { return }
+            Task { await self.pushService.report(push, action: action) }
+            if action == .opened {
+                self.handleDeepLink(push.deepLink)
+            }
+        }
     }
 
     /// Idempotent; called from the root view's .task. Starts the stream
@@ -329,16 +340,13 @@ final class ConversationModel {
             guard let self else { return }
             Task { await self.runBrief() }
         }
-        // Automation pushes: report the answer, then follow the deep link
-        // on a tap-through. Snooze and "Not today" are server-side effects.
-        reminders.onAutomationResponse = { [weak self] push, action in
-            guard let self else { return }
-            Task { await self.pushService.report(push, action: action) }
-            if action == .opened {
-                self.handleDeepLink(push.deepLink)
-            }
-        }
         pushService.start()
+        // A push tap that launched the app parked its deep link; replay it
+        // now that the loop is live.
+        if let parked = pendingDeepLink {
+            pendingDeepLink = nil
+            handleDeepLink(parked)
+        }
         refreshCalendarContext()
         if UserDefaults.standard.bool(forKey: Self.briefEnabledKey) {
             let (hour, minute) = storedWakeTime()
@@ -405,10 +413,18 @@ final class ConversationModel {
     /// Where an automation push's tap lands. The brief plays; everything
     /// else just opens the app, which is already the right screen.
     func handleDeepLink(_ deepLink: String) {
+        // A cold-launch tap can land before activate(): park the link and
+        // let activation replay it once the voice loop is actually up.
+        guard activated else {
+            pendingDeepLink = deepLink
+            return
+        }
         if deepLink == "otto://brief" {
             Task { await runBrief() }
         }
     }
+
+    private var pendingDeepLink: String?
 
     // MARK: - Intents
 

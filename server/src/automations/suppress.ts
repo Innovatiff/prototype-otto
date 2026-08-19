@@ -111,13 +111,18 @@ export const ENGAGEMENT_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 /**
  * Five consecutive unengaged deliveries — counted over the automation's
- * own pushes, newest first, ignoring anything too recent to have been
- * answered. Fewer than five countable sends means no verdict yet.
+ * own pushes that actually REACHED a device, newest first, ignoring
+ * anything too recent to have been answered. A push that never arrived
+ * (no tokens, notifications denied, FCM down) cannot be "ignored", so a
+ * user Otto can't reach never gets their automations disabled for it.
  */
 export function isIgnoredStreak(deliveries: readonly DeliveryRecord[], now: Date): boolean {
   const cutoff = new Date(now.getTime() - ENGAGEMENT_WINDOW_MS).toISOString();
   const pushes = deliveries.filter(
-    (delivery) => delivery.channel === "push" && delivery.createdAt <= cutoff,
+    (delivery) =>
+      delivery.channel === "push" &&
+      delivery.sendOutcome === "sent" &&
+      delivery.createdAt <= cutoff,
   );
   if (pushes.length < IGNORED_STREAK_LIMIT) {
     return false;

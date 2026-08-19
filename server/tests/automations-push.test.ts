@@ -86,6 +86,7 @@ function delivery(overrides: Partial<DeliveryRecord> = {}): DeliveryRecord {
     openedAt: null,
     action: null,
     actionAt: null,
+    sendOutcome: "sent",
     createdAt: "2026-08-19T11:00:00.000Z",
     ...overrides,
   };

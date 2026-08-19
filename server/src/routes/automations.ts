@@ -35,6 +35,8 @@ import {
 import { executeAutomation } from "../automations/handlers.js";
 import { runTick } from "../automations/tick.js";
 import { applyAutomationUpdate, sortForManagement } from "../automations/custom.js";
+import { ensureBuiltInAutomations } from "../automations/defaults.js";
+import { isValidTimezone } from "../automations/schedule.js";
 import {
   applyManagementUpdate,
   claimAutomation,
@@ -49,7 +51,7 @@ import {
   updateOwnerQuietHours,
 } from "../automations/store.js";
 import { AppError, IdParam, parseOrThrow } from "../errors.js";
-import { logInfo } from "../log.js";
+import { errorFields, logError, logInfo } from "../log.js";
 import { requireUid } from "../middleware/auth.js";
 import { registerDeviceToken } from "../automations/push.js";
 
@@ -227,6 +229,17 @@ automationsUserRouter.post(
       const uid = requireUid(req);
       const request = parseOrThrow(DeviceTokenRequest, req.body, "device token request");
       const count = await registerDeviceToken(uid, request.token);
+      // Registration is the moment pushes become deliverable — seed the
+      // built-ins here so a user who never enables calendar sync still
+      // gets their brief. Idempotent; failure never fails registration.
+      if (request.timezone !== undefined && isValidTimezone(request.timezone)) {
+        try {
+          const existing = await loadOwnerAutomations(uid);
+          await ensureBuiltInAutomations(existing, uid, request.timezone, new Date());
+        } catch (err) {
+          logError("built_in_seed_failed", { userId: uid, ...errorFields(err) });
+        }
+      }
       logInfo("device_token_registered", { userId: uid, deviceCount: count });
       res.json({ ok: true, devices: count });
     } catch (err) {
@@ -252,12 +265,17 @@ automationsUserRouter.post(
       }
       if (request.action === "snoozed") {
         // Re-fire the automation shortly; the handler regenerates with
-        // FRESH data rather than replaying a stale body. The automation
-        // may have been deleted since the push — then the snooze is moot.
-        const snoozeUntil = new Date(now.getTime() + SNOOZE_MINUTES * 60_000);
-        await updateAutomationScheduling(delivery.automationId, {
-          nextRunAt: snoozeUntil.toISOString(),
-        }).catch(() => {});
+        // FRESH data rather than replaying a stale body. Only a LIVE
+        // automation re-arms: one deleted or disabled since the push must
+        // not gain a nextRunAt it can never act on (a permanently-due
+        // disabled doc would squat in the tick's due page forever).
+        const target = await readOwnedAutomation(delivery.automationId, uid);
+        if (target !== null && target.enabled) {
+          const snoozeUntil = new Date(now.getTime() + SNOOZE_MINUTES * 60_000);
+          await updateAutomationScheduling(delivery.automationId, {
+            nextRunAt: snoozeUntil.toISOString(),
+          }).catch(() => {});
+        }
       }
       logInfo("delivery_response", {
         userId: uid,
@@ -287,8 +305,10 @@ automationsTickRouter.post(
         purgeViews: purgeExpiredViews,
         loadQuietHours: loadOwnerQuietHours,
         loadOwnerDeliveries: (ownerId) => loadOwnerDeliveries(ownerId),
+        // 15 leaves headroom: the streak needs five COUNTABLE sends among
+        // these after fresh and never-sent records are filtered out.
         loadAutomationDeliveries: (ownerId, automationId) =>
-          loadRecentDeliveries(ownerId, automationId, 10),
+          loadRecentDeliveries(ownerId, automationId, 15),
         notify: (uid, automation, delivery) => storeDeliverer(uid, automation, delivery),
         disable: (id) => updateAutomationScheduling(id, { enabled: false, nextRunAt: null }),
       });

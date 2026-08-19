@@ -29,6 +29,17 @@ function capitalize(text: string): string {
   return text.length === 0 ? text : text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** "9 degrees." / "-3 degrees and likely rain." — never "-0". */
+export function weatherLine(weather: {
+  temperatureC: number;
+  precipitationProbability: number;
+}): string {
+  const rounded = Math.round(weather.temperatureC);
+  const degrees = rounded === 0 ? 0 : rounded;
+  const rain = weather.precipitationProbability >= 50 ? " and likely rain." : ".";
+  return `${degrees} degrees${rain}`;
+}
+
 /** Active reminders whose fire instant has already passed — "slipped". */
 export function slippedReminders(tasks: readonly Task[], now: Date): Task[] {
   const nowIso = now.toISOString();
@@ -39,6 +50,15 @@ export function slippedReminders(tasks: readonly Task[], now: Date): Task[] {
     const at = fireInstant(task);
     return at !== null && at < nowIso;
   });
+}
+
+/** Only the events whose start falls on `date` (a wall date in `timezone`). */
+export function eventsOnDate(
+  events: readonly CalendarSyncEvent[],
+  timezone: string,
+  date: string,
+): CalendarSyncEvent[] {
+  return events.filter((event) => wallDate(new Date(event.startsAt), timezone) === date);
 }
 
 // ── Morning brief: overlap detection + the deterministic push body ──
@@ -184,7 +204,7 @@ export function serializeEveningFacts(facts: EveningFacts): string {
     }
   }
   if (facts.slipped.length > 0) {
-    lines.push("SLIPPED TODAY (past due, still open):");
+    lines.push("PAST DUE (still open):");
     for (const title of facts.slipped) {
       lines.push(`- ${title}`);
     }

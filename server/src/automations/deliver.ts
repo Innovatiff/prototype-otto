@@ -44,6 +44,12 @@ export interface DeliveryRecord {
   /** "snoozed" | "dismissed" when the user answered via a push action. */
   readonly action: string | null;
   readonly actionAt: string | null;
+  /**
+   * How the FCM transport went: "sent" | "no_tokens" | "all_failed" |
+   * null (silent channel, or the outcome write itself failed). Engagement
+   * rules count ONLY "sent" — a push nobody received cannot be "ignored".
+   */
+  readonly sendOutcome: string | null;
   readonly createdAt: string;
 }
 
@@ -93,16 +99,18 @@ export function titleKey(title: string): string {
 }
 
 /**
- * The ignored-recurring-meeting rule: three preps sent for this title, not
- * one opened — stop prepping it. (Opens arrive with Step 5's deep-link
- * report; until then a fourth prep for an untouched title stays silent,
- * which errs on the quiet side — the side Otto errs on.)
+ * The ignored-recurring-meeting rule: three preps ACTUALLY SENT for this
+ * title, not one opened — stop prepping it. Deliveries that never reached
+ * a device (no tokens, FCM down) don't count: silence you never heard is
+ * not silence you chose.
  */
 export function shouldSuppressIgnoredTitle(
   deliveries: readonly DeliveryRecord[],
   key: string,
 ): boolean {
-  const sent = deliveries.filter((delivery) => delivery.titleKey === key);
+  const sent = deliveries.filter(
+    (delivery) => delivery.titleKey === key && delivery.sendOutcome === "sent",
+  );
   if (sent.length < 3) {
     return false;
   }
@@ -175,6 +183,7 @@ export const storeDeliverer: Deliverer = async (uid, automation, delivery) => {
     openedAt: null,
     action: null,
     actionAt: null,
+    sendOutcome: null,
     createdAt: new Date().toISOString(),
   };
   await ref.set(record);
@@ -186,7 +195,7 @@ export const storeDeliverer: Deliverer = async (uid, automation, delivery) => {
     bodyChars: record.body.length,
   });
   if (record.channel === "push") {
-    await sendAutomationPush(uid, {
+    const outcome = await sendAutomationPush(uid, {
       title: record.title,
       body: record.body,
       deepLink: record.deepLink,
@@ -194,6 +203,9 @@ export const storeDeliverer: Deliverer = async (uid, automation, delivery) => {
       automationId: record.automationId,
       automationType: record.automationType,
     });
+    // The engagement rules trust only "sent" records; a failed outcome
+    // write leaves null, which counts as not-sent — the safe direction.
+    await ref.update({ sendOutcome: outcome }).catch(() => {});
   }
 };
 

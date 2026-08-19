@@ -55,6 +55,7 @@ function delivery(id: string, overrides: Partial<DeliveryRecord> = {}): Delivery
     openedAt: null,
     action: null,
     actionAt: null,
+    sendOutcome: "sent",
     createdAt: "2026-08-17T11:00:00.000Z", // two days ago: countable
     ...overrides,
   };
@@ -160,6 +161,15 @@ test("deliveries inside the 12-hour engagement window don't count yet", () => {
 test("silent deliveries never count toward the streak", () => {
   const silent = [1, 2, 3, 4, 5].map((n) => delivery(`d${n}`, { channel: "silent" }));
   assert.ok(!isIgnoredStreak(silent, NOW));
+});
+
+test("a push that never reached a device cannot be 'ignored'", () => {
+  // No tokens registered, notifications denied, FCM down — the user heard
+  // nothing, so nothing counts against them.
+  const unreachable = [1, 2, 3, 4, 5].map((n) => delivery(`d${n}`, { sendOutcome: "no_tokens" }));
+  assert.ok(!isIgnoredStreak(unreachable, NOW));
+  const legacy = [1, 2, 3, 4, 5].map((n) => delivery(`d${n}`, { sendOutcome: null }));
+  assert.ok(!isIgnoredStreak(legacy, NOW), "records without an outcome err on the quiet side");
 });
 
 test("the disable verdict carries the one farewell notice", () => {

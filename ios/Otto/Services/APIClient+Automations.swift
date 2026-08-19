@@ -43,7 +43,11 @@ extension APIClient {
     func registerDeviceToken(_ token: String) async throws {
         let body: Data
         do {
-            body = try OttoCoding.encoder.encode(DeviceTokenRequest(token: token))
+            // The timezone rides along so the server can seed the built-in
+            // automations the moment pushes become deliverable.
+            body = try OttoCoding.encoder.encode(
+                DeviceTokenRequest(token: token, timezone: TimeZone.current.identifier)
+            )
         } catch {
             throw APIError.decoding(underlying: error)
         }

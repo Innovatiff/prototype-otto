@@ -48,6 +48,11 @@ final class AutomationsModel {
     }
 
     func setEnabled(_ automation: Automation, enabled: Bool) async {
+        // Optimistic: the toggle must not snap back while the round trip
+        // runs; the reload afterwards restores server truth either way.
+        if let index = automations.firstIndex(where: { $0.id == automation.id }) {
+            automations[index].enabled = enabled
+        }
         await mutate { client in
             try await client.updateAutomation(id: automation.id, enabled: enabled, timeOfDay: nil)
         }
@@ -63,6 +68,11 @@ final class AutomationsModel {
             onWakeTimeChanged?(parts.hour ?? 7, parts.minute ?? 30)
         }
         let stored = timeOfDay
+        // Optimistic, same reason as the toggle: the picker holds its value.
+        if let index = automations.firstIndex(where: { $0.id == automation.id }),
+           case .fixed(let rrule, _) = automations[index].schedule {
+            automations[index].schedule = .fixed(rrule: rrule, timeOfDay: stored)
+        }
         await mutate { client in
             try await client.updateAutomation(id: automation.id, enabled: nil, timeOfDay: stored)
         }
@@ -89,13 +99,18 @@ final class AutomationsModel {
 
     private func mutate(_ operation: (APIClient) async throws -> Void) async {
         guard let client = makeClient() else { return }
+        var failure: String?
         do {
             try await operation(client)
-            errorMessage = nil
         } catch {
-            errorMessage = "That change didn't save."
+            failure = "That change didn't save."
         }
+        // Reload restores server truth (and rolls back the optimistic
+        // change on failure) — then the failure message survives it.
         await load()
+        if let failure {
+            errorMessage = failure
+        }
     }
 
     private func makeClient() -> APIClient? {

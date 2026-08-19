@@ -103,6 +103,12 @@ export type AutomationRunResult = z.infer<typeof AutomationRunResult>;
 export const DeviceTokenRequest = z.object({
   /** The FCM registration token. */
   token: z.string().min(1).max(512),
+  /**
+   * The device's IANA zone. Registration is the moment push delivery
+   * becomes possible, so the built-in automations seed here too — a user
+   * who never enables calendar sync still gets their brief.
+   */
+  timezone: z.string().min(1).optional(),
 });
 export type DeviceTokenRequest = z.infer<typeof DeviceTokenRequest>;
 

@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import { loadActiveTasks } from "../brief/gather.js";
 import { retrieveMemories } from "../memory/retrieve.js";
-import { wallTime } from "../util/time.js";
+import { wallDate, wallTime } from "../util/time.js";
 import { composeAutomationText } from "./compose.js";
 import { serializeEveningFacts, eveningFacts } from "./content.js";
 import { storeDeliverer, type Deliverer } from "./deliver.js";
@@ -325,11 +325,16 @@ export const customPromptHandler: AutomationHandler = async (automation, ctx) =>
   const lines: string[] = [`STANDING INSTRUCTION: ${instruction}`];
   lines.push(`NOW: ${ctx.now.toISOString()} (${automation.timezone})`);
   if (events.length > 0) {
+    // Day-labeled: a 48-hour window without dates would let "10:00 AM"
+    // read as today when the meeting is tomorrow.
+    const today = wallDate(ctx.now, automation.timezone);
     lines.push("CALENDAR (next 48h, compressed):");
     for (const event of events.slice(0, 20)) {
       const where = event.location !== undefined ? ` @ ${event.location}` : "";
+      const day = wallDate(new Date(event.startsAt), automation.timezone);
+      const dayLabel = day === today ? "today" : day;
       lines.push(
-        `- ${wallTime(event.startsAt, automation.timezone)} ${event.title}${where} ` +
+        `- ${dayLabel} ${wallTime(event.startsAt, automation.timezone)} ${event.title}${where} ` +
           `(${event.attendeeCount} attendees)`,
       );
     }

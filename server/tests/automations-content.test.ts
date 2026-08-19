@@ -12,12 +12,14 @@ import {
   briefPushBody,
   cleanWeekStreak,
   eveningFacts,
+  eventsOnDate,
   hasEveningContent,
   overlapsIn,
   planCheckinMessage,
   resolveUpcomingMeeting,
   slippedReminders,
   tasksMatchingTitle,
+  weatherLine,
 } from "../src/automations/content.js";
 import {
   sanitizeBody,
@@ -111,6 +113,29 @@ test("a morning with genuinely nothing produces an empty body — the handler su
   assert.equal(body, "");
 });
 
+test("the brief sees only TODAY — tomorrow's meetings are not 'First up'", () => {
+  const todays = event("today", { startsAt: "2026-08-19T16:00:00.000Z", endsAt: "2026-08-19T17:00:00.000Z" });
+  const tomorrows = event("tomorrow", {
+    startsAt: "2026-08-20T13:30:00.000Z",
+    endsAt: "2026-08-20T14:00:00.000Z",
+  });
+  // 03:00Z Aug 20 is still 23:00 Aug 19 in New York — wall dates, not UTC.
+  const lateTonight = event("late", {
+    startsAt: "2026-08-20T03:00:00.000Z",
+    endsAt: "2026-08-20T03:30:00.000Z",
+  });
+  assert.deepEqual(
+    eventsOnDate([todays, tomorrows, lateTonight], TZ, "2026-08-19").map((e) => e.id),
+    ["today", "late"],
+  );
+});
+
+test("weatherLine rounds honestly — never '-0 degrees'", () => {
+  assert.equal(weatherLine({ temperatureC: 9.4, precipitationProbability: 80 }), "9 degrees and likely rain.");
+  assert.equal(weatherLine({ temperatureC: -0.4, precipitationProbability: 10 }), "0 degrees.");
+  assert.equal(weatherLine({ temperatureC: -3.6, precipitationProbability: 50 }), "-4 degrees and likely rain.");
+});
+
 test("overlapsIn finds the shared minutes", () => {
   const overlaps = overlapsIn([
     event("a", { startsAt: "2026-08-19T13:30:00.000Z", endsAt: "2026-08-19T14:00:00.000Z" }),
@@ -199,6 +224,7 @@ test("the ignored-recurring-meeting rule: three unopened preps end the prepping"
     openedAt,
     action: null,
     actionAt: null,
+    sendOutcome: "sent",
     createdAt: "2026-08-01T00:00:00.000Z",
   });
   const key = titleKey("Weekly Sync (Q3)");

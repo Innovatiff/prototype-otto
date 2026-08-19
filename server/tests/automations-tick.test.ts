@@ -136,6 +136,7 @@ function pastDelivery(
     openedAt: null,
     action: null,
     actionAt: null,
+    sendOutcome: "sent",
     createdAt: "2026-08-18T11:00:00.000Z", // yesterday — no daily-cap effect
     ...overrides,
   };

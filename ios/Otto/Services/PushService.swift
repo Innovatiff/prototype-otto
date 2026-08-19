@@ -88,14 +88,18 @@ final class PushService: NSObject {
     }
 
     /// Uploads the token when there is one, a signed-in user, and the
-    /// server doesn't already have it. Safe to call often.
+    /// server doesn't already have it FOR THIS ACCOUNT — the marker is
+    /// uid-scoped, so switching accounts on one phone re-registers rather
+    /// than silently leaving the new account unreachable. Safe to call
+    /// often.
     func uploadTokenIfNeeded() async {
-        guard let token = latestToken, auth.currentUserId != nil else { return }
-        guard UserDefaults.standard.string(forKey: Self.uploadedTokenKey) != token else { return }
+        guard let token = latestToken, let uid = auth.currentUserId else { return }
+        let marker = "\(uid):\(token)"
+        guard UserDefaults.standard.string(forKey: Self.uploadedTokenKey) != marker else { return }
         guard let client = makeClient() else { return }
         do {
             try await client.registerDeviceToken(token)
-            UserDefaults.standard.set(token, forKey: Self.uploadedTokenKey)
+            UserDefaults.standard.set(marker, forKey: Self.uploadedTokenKey)
         } catch {
             // Silent; retried on the next foreground/token refresh.
         }
