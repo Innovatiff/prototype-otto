@@ -21,7 +21,7 @@ final class CalendarSyncService {
     static let consentKey = "otto.calendarSync.enabled"
     static let lastSyncKey = "otto.calendarSync.lastSyncAt"
     /// Must match BGTaskSchedulerPermittedIdentifiers in project.yml.
-    static let backgroundTaskId = "com.yourname.otto.calendar-refresh"
+    static let backgroundTaskId = "com.alamfernandez.otto.calendar-refresh"
 
     /// Foreground syncs at most hourly; the view only needs to be fresher
     /// than the server's 24-hour staleness line.

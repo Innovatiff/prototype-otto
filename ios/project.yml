@@ -56,7 +56,7 @@ targets:
         UIBackgroundModes: [audio, fetch]
         # The background calendar refresh task; must match
         # CalendarSyncService.backgroundTaskId.
-        BGTaskSchedulerPermittedIdentifiers: [com.yourname.otto.calendar-refresh]
+        BGTaskSchedulerPermittedIdentifiers: [com.alamfernandez.otto.calendar-refresh]
         NSMicrophoneUsageDescription: "Otto listens so you can talk to it."
         NSSpeechRecognitionUsageDescription: "Otto transcribes your speech on this device to understand you."
         # Required for a physical device to reach the dev server on the Mac's
@@ -89,7 +89,7 @@ targets:
       base:
         # Matches the iOS app registered in the Firebase console
         # (GoogleService-Info.plist BUNDLE_ID). Change both together.
-        PRODUCT_BUNDLE_IDENTIFIER: com.yourname.otto
+        PRODUCT_BUNDLE_IDENTIFIER: com.alamfernandez.otto
         PRODUCT_NAME: Otto
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
@@ -117,7 +117,7 @@ targets:
       - target: Otto
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.yourname.otto.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.alamfernandez.otto.tests
         SWIFT_VERSION: "6.0"
         SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
         GENERATE_INFOPLIST_FILE: YES
