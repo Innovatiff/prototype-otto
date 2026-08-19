@@ -113,6 +113,24 @@ function deliveriesCollection() {
   return db().collection(COLLECTIONS.deliveries);
 }
 
+/**
+ * Every recent delivery for an owner, newest first — the suppression
+ * gate's raw material (daily counts, per-automation streaks). Equality-
+ * only query; sorted and capped in memory.
+ */
+export async function loadOwnerDeliveries(uid: string, limit = 60): Promise<DeliveryRecord[]> {
+  const snapshot = await deliveriesCollection().where("ownerId", "==", uid).limit(300).get();
+  const records: DeliveryRecord[] = [];
+  for (const doc of snapshot.docs) {
+    const data = doc.data() as Partial<DeliveryRecord>;
+    if (typeof data.body === "string" && typeof data.createdAt === "string") {
+      records.push(data as DeliveryRecord);
+    }
+  }
+  records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return records.slice(0, limit);
+}
+
 /** Newest first. Equality-only query; sorted and capped in memory. */
 export async function loadRecentDeliveries(
   uid: string,

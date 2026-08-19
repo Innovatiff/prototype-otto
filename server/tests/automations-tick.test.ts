@@ -9,6 +9,7 @@ import { test } from "node:test";
 import type { Automation } from "@otto/shared";
 
 import type { CalendarView } from "../src/automations/calendarView.js";
+import type { AutomationDelivery, DeliveryRecord } from "../src/automations/deliver.js";
 import { evaluateClaim, type RunCompletion } from "../src/automations/store.js";
 import {
   MAX_PER_TICK,
@@ -43,6 +44,8 @@ function automation(id: string, overrides: Partial<Automation> = {}): Automation
 interface Journal {
   executed: string[];
   completed: Map<string, RunCompletion>;
+  notices: { automationId: string; delivery: AutomationDelivery }[];
+  disabled: string[];
 }
 
 function makeDeps(
@@ -51,9 +54,12 @@ function makeDeps(
     claimDenied?: Set<string>;
     execute?: TickDeps["execute"];
     view?: CalendarView | null;
+    quiet?: { start: string; end: string };
+    ownerDeliveries?: DeliveryRecord[];
+    automationDeliveries?: Map<string, DeliveryRecord[]>;
   } = {},
 ): { deps: TickDeps; journal: Journal } {
-  const journal: Journal = { executed: [], completed: new Map() };
+  const journal: Journal = { executed: [], completed: new Map(), notices: [], disabled: [] };
   const deps: TickDeps = {
     now: () => NOW,
     loadDue: (_now, limit) => {
@@ -78,6 +84,18 @@ function makeDeps(
       }),
     loadView: () => Promise.resolve(options.view ?? null),
     purgeViews: () => Promise.resolve(0),
+    loadQuietHours: () => Promise.resolve(options.quiet ?? { start: "22:00", end: "07:00" }),
+    loadOwnerDeliveries: () => Promise.resolve(options.ownerDeliveries ?? []),
+    loadAutomationDeliveries: (_ownerId, automationId) =>
+      Promise.resolve(options.automationDeliveries?.get(automationId) ?? []),
+    notify: (_uid, automation, delivery) => {
+      journal.notices.push({ automationId: automation.id, delivery });
+      return Promise.resolve();
+    },
+    disable: (id) => {
+      journal.disabled.push(id);
+      return Promise.resolve();
+    },
   };
   return { deps, journal };
 }
@@ -91,7 +109,34 @@ function summaryOf(overrides: Partial<TickSummary>): TickSummary {
     failed: 0,
     stale: 0,
     noCalendar: 0,
+    quietHours: 0,
+    alreadyDelivered: 0,
+    rateLimited: 0,
+    autoDisabled: 0,
     purgedViews: 0,
+    ...overrides,
+  };
+}
+
+function pastDelivery(
+  id: string,
+  automationId: string,
+  overrides: Partial<DeliveryRecord> = {},
+): DeliveryRecord {
+  return {
+    id,
+    ownerId: "u1",
+    automationId,
+    automationType: "morning_brief",
+    title: "…",
+    body: "…",
+    deepLink: "otto://brief",
+    channel: "push",
+    titleKey: null,
+    openedAt: null,
+    action: null,
+    actionAt: null,
+    createdAt: "2026-08-18T11:00:00.000Z", // yesterday — no daily-cap effect
     ...overrides,
   };
 }
@@ -259,6 +304,99 @@ test("a fixed automation runs fine with no calendar at all — only relative one
   const { deps, journal } = makeDeps([automation("a1")], { view: null });
   const summary = await runTick(deps);
   assert.equal(summary.delivered, 1);
+  assert.deepEqual(journal.executed, ["a1"]);
+});
+
+// ── The suppression gate at tick level ──────────────────────────────
+
+test("ACCEPTANCE #6: six due automations, only four deliver — priority decides which", async () => {
+  const due = [
+    automation("weekly", { type: "weekly_review", action: { kind: "weekly_review", params: {} } }),
+    automation("evening", { type: "evening_shutdown", action: { kind: "evening_shutdown", params: {} } }),
+    automation("brief", { type: "morning_brief", action: { kind: "morning_brief", params: {} } }),
+    automation("checkin", { type: "plan_checkin", action: { kind: "plan_checkin", params: {} } }),
+    automation("custom", { type: "custom", action: { kind: "custom", params: {} } }),
+    meetingPrep("prep"),
+  ];
+  const { deps, journal } = makeDeps(due, { view: FRESH_VIEW });
+  const summary = await runTick(deps);
+  assert.equal(summary.delivered, 4);
+  assert.equal(summary.rateLimited, 2);
+  // Priority order: what expires first, then what the user created.
+  assert.deepEqual(journal.executed, ["prep", "custom", "brief", "checkin"]);
+});
+
+test("pushes already delivered TODAY count against the cap; yesterday's do not", async () => {
+  const todays = [1, 2, 3].map((n) =>
+    pastDelivery(`t${n}`, "other", { createdAt: "2026-08-19T10:0" + String(n) + ":00.000Z" }),
+  );
+  const { deps } = makeDeps([automation("a1"), automation("a2", { type: "evening_shutdown" })], {
+    ownerDeliveries: [...todays, pastDelivery("old", "other")],
+  });
+  const summary = await runTick(deps);
+  // 3 already today + 1 delivered this pass = 4; the second due automation
+  // hits the cap.
+  assert.equal(summary.delivered, 1);
+  assert.equal(summary.rateLimited, 1);
+});
+
+test("quiet hours swallow the push — unless the automation was scheduled inside them", async () => {
+  // NOW is 07:02 New York; this user's quiet hours run 06:00–08:00.
+  // Meeting prep is event-driven — never "explicitly scheduled inside" —
+  // so it stays silent; the 07:00 fixed schedule was put there by the
+  // user and delivers.
+  const prep = meetingPrep("prep");
+  const scheduledInside = automation("a2");
+  const { deps, journal } = makeDeps([prep, scheduledInside], {
+    quiet: { start: "06:00", end: "08:00" },
+    view: FRESH_VIEW,
+  });
+  const summary = await runTick(deps);
+  assert.equal(summary.quietHours, 1);
+  assert.deepEqual(journal.executed, ["a2"], "the explicitly-inside schedule delivers");
+});
+
+test("a fixed automation that already delivered today stays quiet — except after a snooze", async () => {
+  const deliveredToday = pastDelivery("d1", "a1", { createdAt: "2026-08-19T10:30:00.000Z" });
+  const first = makeDeps([automation("a1")], {
+    automationDeliveries: new Map([["a1", [deliveredToday]]]),
+  });
+  const firstSummary = await runTick(first.deps);
+  assert.equal(firstSummary.alreadyDelivered, 1);
+  assert.deepEqual(first.journal.executed, []);
+
+  const snoozed = { ...deliveredToday, action: "snoozed", actionAt: "2026-08-19T10:35:00.000Z" };
+  const second = makeDeps([automation("a1")], {
+    automationDeliveries: new Map([["a1", [snoozed]]]),
+  });
+  const secondSummary = await runTick(second.deps);
+  assert.equal(secondSummary.delivered, 1, "the snoozed re-fire is the user's own request");
+});
+
+test("five unengaged deliveries in a row: one farewell notice, then the automation turns off", async () => {
+  const ignored = [1, 2, 3, 4, 5].map((n) => pastDelivery(`d${n}`, "a1"));
+  const { deps, journal } = makeDeps([automation("a1")], {
+    automationDeliveries: new Map([["a1", ignored]]),
+  });
+  const summary = await runTick(deps);
+  assert.equal(summary.autoDisabled, 1);
+  assert.deepEqual(journal.executed, [], "the handler never runs");
+  assert.deepEqual(journal.disabled, ["a1"]);
+  assert.equal(journal.notices.length, 1);
+  assert.match(journal.notices[0]?.delivery.body ?? "", /paused/);
+  assert.match(journal.notices[0]?.delivery.body ?? "", /unanswered/);
+  // The completion still records the run; the disable happens after it.
+  assert.equal(journal.completed.get("a1")?.lastResult, "suppressed");
+});
+
+test("one engaged delivery breaks the streak", async () => {
+  const four = [1, 2, 3, 4].map((n) => pastDelivery(`d${n}`, "a1"));
+  const engaged = pastDelivery("d5", "a1", { openedAt: "2026-08-18T12:00:00.000Z" });
+  const { deps, journal } = makeDeps([automation("a1")], {
+    automationDeliveries: new Map([["a1", [...four, engaged]]]),
+  });
+  const summary = await runTick(deps);
+  assert.equal(summary.autoDisabled, 0);
   assert.deepEqual(journal.executed, ["a1"]);
 });
 

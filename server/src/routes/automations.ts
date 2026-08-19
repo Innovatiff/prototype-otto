@@ -21,6 +21,9 @@ import { loadCalendarView, purgeExpiredViews } from "../automations/calendarView
 import {
   deliveryResponseUpdate,
   loadOwnedDelivery,
+  loadOwnerDeliveries,
+  loadRecentDeliveries,
+  storeDeliverer,
   updateDelivery,
 } from "../automations/deliver.js";
 import { executeAutomation } from "../automations/handlers.js";
@@ -29,6 +32,7 @@ import {
   claimAutomation,
   completeAutomationRun,
   loadDueAutomations,
+  loadOwnerQuietHours,
   updateAutomationScheduling,
 } from "../automations/store.js";
 import { AppError, parseOrThrow } from "../errors.js";
@@ -177,6 +181,12 @@ automationsTickRouter.post(
         execute: (automation, ctx) => executeAutomation(automation, ctx),
         loadView: loadCalendarView,
         purgeViews: purgeExpiredViews,
+        loadQuietHours: loadOwnerQuietHours,
+        loadOwnerDeliveries: (ownerId) => loadOwnerDeliveries(ownerId),
+        loadAutomationDeliveries: (ownerId, automationId) =>
+          loadRecentDeliveries(ownerId, automationId, 10),
+        notify: (uid, automation, delivery) => storeDeliverer(uid, automation, delivery),
+        disable: (id) => updateAutomationScheduling(id, { enabled: false, nextRunAt: null }),
       });
       res.json({ ok: true, ...summary });
     } catch (err) {

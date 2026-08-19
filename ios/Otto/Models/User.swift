@@ -18,19 +18,25 @@ struct UserProfile: Codable, Hashable, Sendable {
     var createdAt: Date
     var plansCreatedThisMonth: Int?
     var plansCountMonth: String?
+    var quietHoursStart: String?
+    var quietHoursEnd: String?
 
     init(
         ownerId: String,
         addressTerm: String = "Boss",
         createdAt: Date,
         plansCreatedThisMonth: Int? = nil,
-        plansCountMonth: String? = nil
+        plansCountMonth: String? = nil,
+        quietHoursStart: String? = nil,
+        quietHoursEnd: String? = nil
     ) {
         self.ownerId = ownerId
         self.addressTerm = addressTerm
         self.createdAt = createdAt
         self.plansCreatedThisMonth = plansCreatedThisMonth
         self.plansCountMonth = plansCountMonth
+        self.quietHoursStart = quietHoursStart
+        self.quietHoursEnd = quietHoursEnd
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -39,6 +45,8 @@ struct UserProfile: Codable, Hashable, Sendable {
         case createdAt
         case plansCreatedThisMonth
         case plansCountMonth
+        case quietHoursStart
+        case quietHoursEnd
     }
 
     init(from decoder: any Decoder) throws {
@@ -48,6 +56,8 @@ struct UserProfile: Codable, Hashable, Sendable {
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
         self.plansCreatedThisMonth = try container.decodeIfPresent(Int.self, forKey: .plansCreatedThisMonth)
         self.plansCountMonth = try container.decodeIfPresent(String.self, forKey: .plansCountMonth)
+        self.quietHoursStart = try container.decodeIfPresent(String.self, forKey: .quietHoursStart)
+        self.quietHoursEnd = try container.decodeIfPresent(String.self, forKey: .quietHoursEnd)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -57,5 +67,7 @@ struct UserProfile: Codable, Hashable, Sendable {
         try container.encode(self.createdAt, forKey: .createdAt)
         try container.encodeIfPresent(self.plansCreatedThisMonth, forKey: .plansCreatedThisMonth)
         try container.encodeIfPresent(self.plansCountMonth, forKey: .plansCountMonth)
+        try container.encodeIfPresent(self.quietHoursStart, forKey: .quietHoursStart)
+        try container.encodeIfPresent(self.quietHoursEnd, forKey: .quietHoursEnd)
     }
 }

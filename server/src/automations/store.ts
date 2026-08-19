@@ -19,6 +19,7 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { COLLECTIONS, db } from "../firestore.js";
 import { logWarning } from "../log.js";
+import { readQuietHours, type QuietHours } from "./suppress.js";
 
 /** How long one tick owns a claimed automation before the claim expires. */
 export const LOCK_MS = 2 * 60 * 1000;
@@ -132,6 +133,12 @@ export async function updateAutomationScheduling(
 /** Writes a freshly built automation document. */
 export async function saveAutomation(automation: Automation): Promise<void> {
   await automationsCollection().doc(automation.id).set(automation);
+}
+
+/** The owner's quiet hours, raw off the user doc, defaults applied. */
+export async function loadOwnerQuietHours(uid: string): Promise<QuietHours> {
+  const snapshot = await db().collection(COLLECTIONS.users).doc(uid).get();
+  return readQuietHours(snapshot.data());
 }
 
 /** Permanent removal (custom automations only; callers enforce that). */

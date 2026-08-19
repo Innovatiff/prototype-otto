@@ -8,7 +8,7 @@
 import type { BriefRequest, CalendarEvent, Conflict } from "@otto/shared";
 
 import { gatherBriefContext, loadActiveTasks } from "../brief/gather.js";
-import { storeBrief } from "../brief/store.js";
+import { loadBriefSummary, storeBrief } from "../brief/store.js";
 import {
   BRIEF_MODEL,
   SUMMARY_MODEL,
@@ -20,7 +20,7 @@ import { retrieveMemories } from "../memory/retrieve.js";
 import { loadActivePlans, loadSessionRecords } from "../plans/store.js";
 import { summarizeRecords } from "../routes/plans.js";
 import { recordCostEvent } from "../telemetry/cost.js";
-import { wallTime } from "../util/time.js";
+import { wallDate, wallTime } from "../util/time.js";
 import { composeAutomationText } from "./compose.js";
 import {
   briefPushBody,
@@ -81,6 +81,13 @@ function asConflicts(overlaps: readonly SyncOverlap[], events: readonly Calendar
 }
 
 const morningBrief: AutomationHandler = async (automation, ctx) => {
+  // Already-done: a brief record for today means the user already ran the
+  // brief themselves (or an earlier fire stored it) — the day is covered.
+  const today = wallDate(ctx.now, automation.timezone);
+  const existing = await loadBriefSummary(automation.ownerId, today).catch((): null => null);
+  if (existing !== null) {
+    return "suppressed";
+  }
   const events = ctx.calendar !== null && !ctx.calendar.stale ? ctx.calendar.events : [];
   const briefEvents = asBriefEvents(events);
   const overlaps = overlapsIn(events);

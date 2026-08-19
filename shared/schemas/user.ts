@@ -20,5 +20,12 @@ export const UserProfile = z.object({
    */
   plansCreatedThisMonth: z.number().int().min(0).optional(),
   plansCountMonth: z.string().optional(),
+  /**
+   * Quiet hours, local wall clock "HH:mm". Proactive automation pushes are
+   * suppressed inside the window (defaults 22:00–07:00 when absent) unless
+   * the automation itself was explicitly scheduled inside it.
+   */
+  quietHoursStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  quietHoursEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
 });
 export type UserProfile = z.infer<typeof UserProfile>;

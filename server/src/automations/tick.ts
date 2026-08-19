@@ -13,9 +13,11 @@ import type { Automation, AutomationRunResult, CalendarSyncEvent } from "@otto/s
 
 import { errorFields, logError, logInfo } from "../log.js";
 import type { CalendarView } from "./calendarView.js";
+import type { AutomationDelivery, DeliveryRecord } from "./deliver.js";
 import type { AutomationHandlerResult, AutomationRunContext } from "./handlers.js";
 import { nextRunAt } from "./schedule.js";
 import type { RunCompletion } from "./store.js";
+import { deliveryPriority, suppressionVerdict, type QuietHours } from "./suppress.js";
 
 /** Per-pass cap; anything beyond it is picked up by the next 5-minute tick. */
 export const MAX_PER_TICK = 25;
@@ -38,6 +40,20 @@ export interface TickDeps {
   loadView(ownerId: string, now: Date): Promise<CalendarView | null>;
   /** Deletes views past their 48-hour TTL; returns how many. */
   purgeViews(now: Date): Promise<number>;
+  /** The owner's quiet hours. Cached per owner per pass. */
+  loadQuietHours(ownerId: string): Promise<QuietHours>;
+  /** Owner-wide recent deliveries (daily cap). Cached per owner per pass. */
+  loadOwnerDeliveries(ownerId: string): Promise<DeliveryRecord[]>;
+  /** One automation's own deliveries, deep enough for the ignored streak. */
+  loadAutomationDeliveries(ownerId: string, automationId: string): Promise<DeliveryRecord[]>;
+  /** Delivers the one auto-disable notice (through the normal deliverer). */
+  notify(
+    uid: string,
+    automation: { id: string; type: string },
+    delivery: AutomationDelivery,
+  ): Promise<void>;
+  /** Turns an automation off (enabled false, nextRunAt null). */
+  disable(id: string): Promise<void>;
 }
 
 export interface TickSummary {
@@ -50,6 +66,11 @@ export interface TickSummary {
   stale: number;
   /** Calendar-dependent automations suppressed for a missing/stale view. */
   noCalendar: number;
+  quietHours: number;
+  alreadyDelivered: number;
+  rateLimited: number;
+  /** Automations turned off after five unengaged deliveries in a row. */
+  autoDisabled: number;
   purgedViews: number;
 }
 
@@ -95,6 +116,10 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     failed: 0,
     stale: 0,
     noCalendar: 0,
+    quietHours: 0,
+    alreadyDelivered: 0,
+    rateLimited: 0,
+    autoDisabled: 0,
     purgedViews: 0,
   };
 
@@ -108,8 +133,16 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
 
   const due = await deps.loadDue(startedAt, MAX_PER_TICK);
   summary.due = due.length;
+  // Contention order: when more automations are due than today's budget
+  // allows, the important ones (what expires, what the user created) go
+  // first and the rate limit silences the rest.
+  due.sort(
+    (a, b) =>
+      deliveryPriority(a) - deliveryPriority(b) ||
+      (a.nextRunAt ?? "").localeCompare(b.nextRunAt ?? ""),
+  );
 
-  // One view load per owner per pass — several automations often share one.
+  // One load per owner per pass — several automations often share one.
   const viewCache = new Map<string, CalendarView | null>();
   const viewFor = async (ownerId: string): Promise<CalendarView | null> => {
     if (viewCache.has(ownerId)) {
@@ -124,6 +157,10 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     viewCache.set(ownerId, view);
     return view;
   };
+  const quietCache = new Map<string, QuietHours>();
+  const deliveriesCache = new Map<string, DeliveryRecord[]>();
+  /** Pushes delivered earlier in THIS pass, per owner — the cap sees them. */
+  const passPushes = new Map<string, number>();
 
   // Sequential on purpose: per-pass work is capped, handlers may hit the
   // model, and a predictable pass beats a fast one here.
@@ -137,6 +174,7 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     const view = await viewFor(claimed.ownerId);
 
     let result: AutomationRunResult;
+    let disableAfterComplete = false;
     if (isStaleFire(scheduledFor, deps.now())) {
       result = "suppressed";
       summary.stale += 1;
@@ -146,21 +184,20 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
       result = "suppressed";
       summary.noCalendar += 1;
     } else {
-      try {
-        result = await deps.execute(claimed, { scheduledFor, now: deps.now(), calendar: view });
-      } catch (err) {
-        logError("automation_handler_failed", {
-          automationId: claimed.id,
-          userId: claimed.ownerId,
-          actionKind: claimed.action.kind,
-          ...errorFields(err),
-        });
-        result = "failed";
-      }
+      const outcome = await gateAndExecute(deps, claimed, view, {
+        quietCache,
+        deliveriesCache,
+        passPushes,
+        summary,
+        scheduledFor,
+      });
+      result = outcome.result;
+      disableAfterComplete = outcome.disable;
     }
 
     if (result === "delivered") {
       summary.delivered += 1;
+      passPushes.set(claimed.ownerId, (passPushes.get(claimed.ownerId) ?? 0) + 1);
     } else if (result === "suppressed") {
       summary.suppressed += 1;
     } else {
@@ -177,8 +214,116 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
       // occurrence. At-least-once is the accepted trade here.
       logError("automation_complete_failed", { automationId: claimed.id, ...errorFields(err) });
     }
+    if (disableAfterComplete) {
+      // AFTER the completion write, so the final state is the invariant
+      // one: enabled false, nextRunAt null, lock released.
+      try {
+        await deps.disable(claimed.id);
+      } catch (err) {
+        logError("auto_disable_failed", { automationId: claimed.id, ...errorFields(err) });
+      }
+    }
   }
 
   logInfo("automations_tick", { ...summary, ms: deps.now().getTime() - startedAt.getTime() });
   return summary;
+}
+
+interface GateState {
+  readonly quietCache: Map<string, QuietHours>;
+  readonly deliveriesCache: Map<string, DeliveryRecord[]>;
+  readonly passPushes: Map<string, number>;
+  readonly summary: TickSummary;
+  readonly scheduledFor: string | null;
+}
+
+interface GateOutcome {
+  readonly result: AutomationRunResult;
+  /** True when the loop must turn the automation off after completing. */
+  readonly disable: boolean;
+}
+
+/**
+ * The suppression gate, then the handler. Every suppression is a normal
+ * "suppressed" completion; the disable verdict sends its one farewell
+ * notice here and asks the loop to switch the automation off after the
+ * completion write.
+ */
+async function gateAndExecute(
+  deps: TickDeps,
+  claimed: Automation,
+  view: CalendarView | null,
+  state: GateState,
+): Promise<GateOutcome> {
+  let quiet = state.quietCache.get(claimed.ownerId);
+  if (quiet === undefined) {
+    quiet = await deps
+      .loadQuietHours(claimed.ownerId)
+      .catch((): QuietHours => ({ start: "22:00", end: "07:00" }));
+    state.quietCache.set(claimed.ownerId, quiet);
+  }
+  let ownerDeliveries = state.deliveriesCache.get(claimed.ownerId);
+  if (ownerDeliveries === undefined) {
+    ownerDeliveries = await deps
+      .loadOwnerDeliveries(claimed.ownerId)
+      .catch((): DeliveryRecord[] => []);
+    state.deliveriesCache.set(claimed.ownerId, ownerDeliveries);
+  }
+  const automationDeliveries = await deps
+    .loadAutomationDeliveries(claimed.ownerId, claimed.id)
+    .catch((): DeliveryRecord[] => []);
+
+  const verdict = suppressionVerdict({
+    automation: claimed,
+    now: deps.now(),
+    quiet,
+    automationDeliveries,
+    ownerDeliveries,
+    deliveredThisPass: state.passPushes.get(claimed.ownerId) ?? 0,
+  });
+
+  if (verdict.kind === "disable") {
+    // One farewell, then off. The notice bypasses the daily cap — it is
+    // the last thing this automation will ever say.
+    try {
+      await deps.notify(claimed.ownerId, claimed, {
+        title: claimed.label,
+        body: verdict.notice,
+        deepLink: "otto://settings",
+        channel: "push",
+      });
+    } catch (err) {
+      logError("auto_disable_notice_failed", { automationId: claimed.id, ...errorFields(err) });
+    }
+    state.summary.autoDisabled += 1;
+    return { result: "suppressed", disable: true };
+  }
+
+  if (verdict.kind === "suppress") {
+    if (verdict.reason === "quiet_hours") {
+      state.summary.quietHours += 1;
+    } else if (verdict.reason === "already_delivered") {
+      state.summary.alreadyDelivered += 1;
+    } else {
+      state.summary.rateLimited += 1;
+    }
+    return { result: "suppressed", disable: false };
+  }
+
+  try {
+    const result = await deps.execute(claimed, {
+      scheduledFor: state.scheduledFor,
+      now: deps.now(),
+      calendar: view,
+    });
+    return { result, disable: false };
+  } catch (err) {
+    logError("automation_handler_failed", {
+      automationId: claimed.id,
+      userId: claimed.ownerId,
+      actionKind: claimed.action.kind,
+      ...errorFields(err),
+    });
+    return { result: "failed", disable: false };
+  }
 }
