@@ -72,9 +72,11 @@ targets:
       path: Otto/Otto.entitlements
       properties:
         com.apple.developer.healthkit: true
-        # Remote push (automation deliveries). Xcode flips this to
-        # `production` automatically for App Store builds.
-        aps-environment: development
+        # DELIBERATELY ABSENT: aps-environment. With the Push capability
+        # declared in SystemCapabilities below, Xcode's automatic signing
+        # injects aps-environment itself at signing time; declaring it
+        # here as well is what trips the capability mapper ("PUSH_
+        # NOTIFICATIONS could not be determined").
         # DELIBERATELY ABSENT: com.apple.developer.usernotifications.time-sensitive.
         # Xcode's automatic signing cannot map that entitlement from a
         # file-based .entitlements ("USERNOTIFICATIONS_TIMESENSITIVE could
