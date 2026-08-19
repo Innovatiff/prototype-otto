@@ -17,15 +17,18 @@ import Foundation
 @MainActor
 final class CalendarSyncService {
 
+    // All four constants are immutable and Sendable; `nonisolated` lets the
+    // nonisolated `shouldSync` and non-main contexts (the background task
+    // registration) read them under strict concurrency.
     /// Settings toggle — the consent flag. Nothing syncs while false.
-    static let consentKey = "otto.calendarSync.enabled"
-    static let lastSyncKey = "otto.calendarSync.lastSyncAt"
+    nonisolated static let consentKey = "otto.calendarSync.enabled"
+    nonisolated static let lastSyncKey = "otto.calendarSync.lastSyncAt"
     /// Must match BGTaskSchedulerPermittedIdentifiers in project.yml.
-    static let backgroundTaskId = "com.alamfernandez.otto.calendar-refresh"
+    nonisolated static let backgroundTaskId = "com.alamfernandez.otto.calendar-refresh"
 
     /// Foreground syncs at most hourly; the view only needs to be fresher
     /// than the server's 24-hour staleness line.
-    static let minSyncInterval: TimeInterval = 60 * 60
+    nonisolated static let minSyncInterval: TimeInterval = 60 * 60
 
     private let auth: any AuthProvider
     private let calendar: CalendarService
