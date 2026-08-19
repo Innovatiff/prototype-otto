@@ -5,6 +5,7 @@
  * iOS models) derives from these Zod definitions. Change a schema here and
  * re-run `npm run codegen`; never hand-edit generated Swift.
  */
+export * from "./automation.js";
 export * from "./brief.js";
 export * from "./calendar.js";
 export * from "./common.js";
