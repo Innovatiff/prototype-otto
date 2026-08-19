@@ -100,9 +100,12 @@ targets:
         # cannot compile. Do not flip this to MainActor.
         SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
 
-        # Simulator needs no signing team; set DEVELOPMENT_TEAM here once the
-        # Apple Developer Program membership lands.
+        # The paid Apple Developer Program team — REQUIRED for the push,
+        # time-sensitive, and HealthKit entitlements (the free personal team
+        # cannot sign them). The matching Apple ID must be signed into
+        # Xcode → Settings → Accounts.
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: TSZLLRZJXH
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_EMIT_LOC_STRINGS: NO
 
@@ -121,3 +124,4 @@ targets:
         SWIFT_VERSION: "6.0"
         SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
         GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: TSZLLRZJXH
