@@ -71,6 +71,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Automations are managed entirely through the API (the tick runs them,
+    // Step 7's management routes edit them). The documents carry
+    // scheduler-internal fields (locks, counters) no client may touch — or
+    // even see.
+    match /automations/{automationId} {
+      allow read, write: if false;
+    }
+
     // Morning briefs are stored server-side for day-to-day continuity;
     // clients receive them over the API only.
     match /briefs/{briefId} {

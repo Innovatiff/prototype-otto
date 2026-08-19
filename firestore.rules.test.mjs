@@ -94,6 +94,21 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
       { role: "assistant", content: "Hello.", timestamp: "2026-07-30T14:05:01.000Z" },
     ],
   });
+  await setDoc(doc(db, "automations/auto-alice"), {
+    id: "auto-alice",
+    ownerId: ALICE,
+    type: "morning_brief",
+    label: "Morning brief",
+    enabled: true,
+    schedule: { kind: "fixed", rrule: "FREQ=DAILY", timeOfDay: "07:00" },
+    timezone: "America/New_York",
+    action: { kind: "morning_brief", params: {} },
+    lastRunAt: null,
+    nextRunAt: "2026-08-19T11:00:00.000Z",
+    lastResult: null,
+    lockedUntil: "2026-08-19T11:02:00.000Z",
+    createdAt: "2026-08-01T00:00:00.000Z",
+  });
   await setDoc(doc(db, "cost_events/evt-1"), {
     userId: ALICE,
     turnId: "turn-1",
@@ -269,6 +284,30 @@ test("sessions: server-only — the owner cannot read or write their own session
       startedAt: "2026-07-30T14:00:00.000Z",
       lastTurnAt: "2026-07-30T14:00:00.000Z",
       messages: [],
+    }),
+  );
+});
+
+test("automations: server-only — the owner cannot read, list, toggle, or unlock their own", async () => {
+  await assertFails(getDoc(doc(alice, "automations/auto-alice")));
+  await assertFails(
+    getDocs(query(collection(alice, "automations"), where("ownerId", "==", ALICE))),
+  );
+  // Flipping enabled, forging a run result, or clearing the tick's lock —
+  // all management goes through the API.
+  await assertFails(updateDoc(doc(alice, "automations/auto-alice"), { enabled: false }));
+  await assertFails(updateDoc(doc(alice, "automations/auto-alice"), { lockedUntil: null }));
+  await assertFails(
+    setDoc(doc(alice, "automations/auto-forged"), {
+      id: "auto-forged",
+      ownerId: ALICE,
+      type: "custom",
+      label: "forged",
+      enabled: true,
+      schedule: { kind: "fixed", rrule: "FREQ=DAILY", timeOfDay: "07:00" },
+      timezone: "America/New_York",
+      action: { kind: "composite", params: {} },
+      createdAt: "2026-08-01T00:00:00.000Z",
     }),
   );
 });

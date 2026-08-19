@@ -45,5 +45,50 @@ gcloud run deploy "${SERVICE}" \
   --allow-unauthenticated \
   --set-env-vars=NODE_ENV=production
 
+SERVICE_URL="$(gcloud run services describe "${SERVICE}" --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')"
+
+# ── Automations scheduler ────────────────────────────────────────────
+# Cloud Scheduler fires POST /automations/tick every 5 minutes with an OIDC
+# token minted for a dedicated invoker service account. The service is
+# publicly reachable, so the route verifies the token at the app layer:
+# SCHEDULER_INVOKER (who may call) and SCHEDULER_AUDIENCE (what the token
+# must be minted for) arm that check — without them the route fails closed.
+INVOKER_SA="otto-scheduler-invoker"
+INVOKER_EMAIL="${INVOKER_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
+TICK_URL="${SERVICE_URL}/automations/tick"
+
+if ! gcloud iam service-accounts describe "${INVOKER_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+  echo "Creating scheduler invoker service account ${INVOKER_EMAIL}..."
+  gcloud iam service-accounts create "${INVOKER_SA}" \
+    --project="${PROJECT_ID}" \
+    --display-name="Otto automations tick invoker"
+fi
+
+echo "Arming the tick guard (SCHEDULER_INVOKER, SCHEDULER_AUDIENCE)..."
+gcloud run services update "${SERVICE}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --update-env-vars="SCHEDULER_INVOKER=${INVOKER_EMAIL},SCHEDULER_AUDIENCE=${TICK_URL}" \
+  --quiet >/dev/null
+
+SCHEDULER_ARGS=(
+  --project="${PROJECT_ID}"
+  --location="${REGION}"
+  --schedule="*/5 * * * *"
+  --uri="${TICK_URL}"
+  --http-method=POST
+  --oidc-service-account-email="${INVOKER_EMAIL}"
+  --oidc-token-audience="${TICK_URL}"
+  --attempt-deadline=600s
+)
+if gcloud scheduler jobs describe otto-automations-tick \
+    --project="${PROJECT_ID}" --location="${REGION}" >/dev/null 2>&1; then
+  echo "Updating Cloud Scheduler job otto-automations-tick..."
+  gcloud scheduler jobs update http otto-automations-tick "${SCHEDULER_ARGS[@]}" --quiet >/dev/null
+else
+  echo "Creating Cloud Scheduler job otto-automations-tick (every 5 minutes)..."
+  gcloud scheduler jobs create http otto-automations-tick "${SCHEDULER_ARGS[@]}" --quiet >/dev/null
+fi
+
 echo "Done. Service URL:"
-gcloud run services describe "${SERVICE}" --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)'
+echo "${SERVICE_URL}"
