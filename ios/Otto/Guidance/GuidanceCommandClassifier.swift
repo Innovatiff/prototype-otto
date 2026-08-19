@@ -65,13 +65,17 @@ enum GuidanceCommandClassifier {
         "why", "where", "when", "is", "are", "do", "does", "am", "whos", "who",
     ]
 
-    /// "135 pounds", "22.5 kilos" — unit canonicalized for Step 8's parser.
-    private static let weightPattern =
-        /(\d+(?:[.,]\d+)?)\s*(pounds|pound|lbs|lb|kilograms|kilogram|kilos|kilo|kgs|kg)\b/
-    /// "used 135" with no unit — the plan's unit is implied.
-    private static let bareUsedPattern = /^(?:i\s+)?used\s+(\d+(?:[.,]\d+)?)$/
-
     static func classify(_ utterance: String) -> VoiceCommand? {
+        // Regex values are not Sendable, so the patterns live here rather
+        // than in statics. Construction is microseconds, and classify runs
+        // at most once per finalized utterance — far inside the 200ms
+        // budget.
+        // "135 pounds", "22.5 kilos" — unit canonicalized for the parser.
+        let weightPattern =
+            /(\d+(?:[.,]\d+)?)\s*(pounds|pound|lbs|lb|kilograms|kilogram|kilos|kilo|kgs|kg)\b/
+        // "used 135" with no unit — the plan's unit is implied.
+        let bareUsedPattern = /^(?:i\s+)?used\s+(\d+(?:[.,]\d+)?)$/
+
         let text = normalize(utterance)
         guard !text.isEmpty else { return nil }
 
