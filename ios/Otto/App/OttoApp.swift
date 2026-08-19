@@ -1,5 +1,29 @@
-import SwiftUI
 import FirebaseCore
+import FirebaseMessaging
+import SwiftUI
+import UIKit
+
+/// APNs plumbing SwiftUI cannot express: the system hands the APNs device
+/// token to the app delegate, and FCM needs it before it can mint its own
+/// registration token.
+@MainActor
+final class PushAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        Messaging.messaging().apnsToken = deviceToken
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: any Error
+    ) {
+        // Simulators and denied capability land here; pushes just don't
+        // arrive, and everything else works.
+        print("PushAppDelegate: APNs registration failed: \(error.localizedDescription)")
+    }
+}
 
 /// App entry point.
 ///
@@ -9,6 +33,7 @@ import FirebaseCore
 /// ios/Otto/GoogleService-Info.plist (it is gitignored, never committed).
 @main
 struct OttoApp: App {
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @State private var conversation: ConversationModel
     @State private var settings: DebugModel
     @State private var memory: MemoryModel

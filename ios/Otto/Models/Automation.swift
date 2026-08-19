@@ -229,3 +229,63 @@ enum AutomationType: String, Codable, Hashable, Sendable, CaseIterable {
     case planCheckin = "plan_checkin"
     case custom
 }
+
+enum DeliveryAction: String, Codable, Hashable, Sendable, CaseIterable {
+    case opened
+    case snoozed
+    case dismissed
+}
+
+struct DeliveryResponseRequest: Codable, Hashable, Sendable {
+    var deliveryId: String
+    var action: DeliveryAction
+
+    init(
+        deliveryId: String,
+        action: DeliveryAction
+    ) {
+        self.deliveryId = deliveryId
+        self.action = action
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case deliveryId
+        case action
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.deliveryId = try container.decode(String.self, forKey: .deliveryId)
+        self.action = try container.decode(DeliveryAction.self, forKey: .action)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.deliveryId, forKey: .deliveryId)
+        try container.encode(self.action, forKey: .action)
+    }
+}
+
+struct DeviceTokenRequest: Codable, Hashable, Sendable {
+    var token: String
+
+    init(
+        token: String
+    ) {
+        self.token = token
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case token
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.token = try container.decode(String.self, forKey: .token)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.token, forKey: .token)
+    }
+}

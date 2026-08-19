@@ -197,6 +197,8 @@ test("the ignored-recurring-meeting rule: three unopened preps end the prepping"
     channel: "push",
     titleKey: key,
     openedAt,
+    action: null,
+    actionAt: null,
     createdAt: "2026-08-01T00:00:00.000Z",
   });
   const key = titleKey("Weekly Sync (Q3)");

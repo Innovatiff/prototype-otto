@@ -99,6 +99,27 @@ export type AutomationRunResult = z.infer<typeof AutomationRunResult>;
  * Firestore stores them as explicit nulls until the first run, and the
  * generated Swift decodes explicit null and absent key identically (nil).
  */
+/** Registers this device for automation pushes. */
+export const DeviceTokenRequest = z.object({
+  /** The FCM registration token. */
+  token: z.string().min(1).max(512),
+});
+export type DeviceTokenRequest = z.infer<typeof DeviceTokenRequest>;
+
+/**
+ * How the user answered a delivered push. "opened" is the tap-through
+ * (meeting-prep engagement reads it); "snoozed" re-fires the automation in
+ * 30 minutes; "dismissed" is the explicit "Not today".
+ */
+export const DeliveryAction = z.enum(["opened", "snoozed", "dismissed"]);
+export type DeliveryAction = z.infer<typeof DeliveryAction>;
+
+export const DeliveryResponseRequest = z.object({
+  deliveryId: zId,
+  action: DeliveryAction,
+});
+export type DeliveryResponseRequest = z.infer<typeof DeliveryResponseRequest>;
+
 export const Automation = z.object({
   id: zId,
   ownerId: zId,

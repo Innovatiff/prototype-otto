@@ -72,11 +72,19 @@ targets:
       path: Otto/Otto.entitlements
       properties:
         com.apple.developer.healthkit: true
+        # Remote push (automation deliveries). Xcode flips this to
+        # `production` automatically for App Store builds.
+        aps-environment: development
+        # Meeting prep interrupts focus (it expires with the meeting); the
+        # Phase 5 guidance backstop uses the same level.
+        com.apple.developer.usernotifications.time-sensitive: true
     dependencies:
       - package: firebase-ios-sdk
         product: FirebaseAuth
       - package: firebase-ios-sdk
         product: FirebaseCore
+      - package: firebase-ios-sdk
+        product: FirebaseMessaging
     settings:
       base:
         # Matches the iOS app registered in the Firebase console

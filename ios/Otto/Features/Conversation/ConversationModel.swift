@@ -266,6 +266,8 @@ final class ConversationModel {
     /// Created with the model at app start so its notification delegate is
     /// installed before any reminder can fire in the foreground.
     private let reminders = ReminderScheduler()
+    /// FCM registration and push-response reporting (automation deliveries).
+    private let pushService: PushService
     /// The task screen's state — task events upsert into it live so
     /// voice-added items animate in while the screen is open.
     private let tasksModel: TasksModel
@@ -286,6 +288,7 @@ final class ConversationModel {
         self.tasksModel = tasksModel
         self.plansModel = plansModel
         self.calendarService = calendarService
+        self.pushService = PushService(auth: auth)
         let voiceLoop = VoiceLoop(auth: auth)
         self.voiceLoop = voiceLoop
         self.guidance = GuidanceRuntime(voiceLoop: voiceLoop, auth: auth)
@@ -326,6 +329,16 @@ final class ConversationModel {
             guard let self else { return }
             Task { await self.runBrief() }
         }
+        // Automation pushes: report the answer, then follow the deep link
+        // on a tap-through. Snooze and "Not today" are server-side effects.
+        reminders.onAutomationResponse = { [weak self] push, action in
+            guard let self else { return }
+            Task { await self.pushService.report(push, action: action) }
+            if action == .opened {
+                self.handleDeepLink(push.deepLink)
+            }
+        }
+        pushService.start()
         refreshCalendarContext()
         if UserDefaults.standard.bool(forKey: Self.briefEnabledKey) {
             let (hour, minute) = storedWakeTime()
@@ -385,6 +398,16 @@ final class ConversationModel {
     /// sheet closes (sign in/out happens in there).
     func refreshAccount() {
         signedIn = auth.currentUserId != nil
+        // A fresh sign-in is the moment the token upload can finally land.
+        Task { await pushService.uploadTokenIfNeeded() }
+    }
+
+    /// Where an automation push's tap lands. The brief plays; everything
+    /// else just opens the app, which is already the right screen.
+    func handleDeepLink(_ deepLink: String) {
+        if deepLink == "otto://brief" {
+            Task { await runBrief() }
+        }
     }
 
     // MARK: - Intents

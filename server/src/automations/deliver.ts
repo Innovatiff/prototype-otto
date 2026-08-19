@@ -13,6 +13,7 @@
  */
 import { COLLECTIONS, db } from "../firestore.js";
 import { logInfo, logWarning } from "../log.js";
+import { sendAutomationPush } from "./push.js";
 
 export const BODY_WORD_CAP = 60;
 
@@ -38,8 +39,11 @@ export interface DeliveryRecord {
   readonly deepLink: string;
   readonly channel: "push" | "silent";
   readonly titleKey: string | null;
-  /** Stamped by the open report (Step 5); null = never opened. */
+  /** Stamped by the open report; null = never opened. */
   readonly openedAt: string | null;
+  /** "snoozed" | "dismissed" when the user answered via a push action. */
+  readonly action: string | null;
+  readonly actionAt: string | null;
   readonly createdAt: string;
 }
 
@@ -134,8 +138,9 @@ export async function loadRecentDeliveries(
 }
 
 /**
- * The Step 3 deliverer: sanitize, store, log. Step 5 layers FCM on top of
- * the same record.
+ * The production deliverer: sanitize, store, then push. The stored record
+ * is the durable truth; FCM is the best-effort transport on top — "silent"
+ * deliveries update state only and never notify.
  */
 export const storeDeliverer: Deliverer = async (uid, automation, delivery) => {
   const ref = deliveriesCollection().doc();
@@ -150,6 +155,8 @@ export const storeDeliverer: Deliverer = async (uid, automation, delivery) => {
     channel: delivery.channel,
     titleKey: delivery.titleKey ?? null,
     openedAt: null,
+    action: null,
+    actionAt: null,
     createdAt: new Date().toISOString(),
   };
   await ref.set(record);
@@ -160,4 +167,49 @@ export const storeDeliverer: Deliverer = async (uid, automation, delivery) => {
     channel: record.channel,
     bodyChars: record.body.length,
   });
+  if (record.channel === "push") {
+    await sendAutomationPush(uid, {
+      title: record.title,
+      body: record.body,
+      deepLink: record.deepLink,
+      deliveryId: record.id,
+      automationId: record.automationId,
+      automationType: record.automationType,
+    });
+  }
 };
+
+/** One delivery by id, owner-checked. */
+export async function loadOwnedDelivery(
+  deliveryId: string,
+  uid: string,
+): Promise<DeliveryRecord | null> {
+  const snapshot = await deliveriesCollection().doc(deliveryId).get();
+  const data = snapshot.data() as Partial<DeliveryRecord> | undefined;
+  if (data === undefined || data.ownerId !== uid || typeof data.id !== "string") {
+    return null;
+  }
+  return data as DeliveryRecord;
+}
+
+/**
+ * The targeted fields a response writes. First open wins (engagement must
+ * not inflate); snooze/dismiss record the latest explicit answer.
+ */
+export function deliveryResponseUpdate(
+  record: DeliveryRecord,
+  action: "opened" | "snoozed" | "dismissed",
+  now: Date,
+): Record<string, string> | null {
+  if (action === "opened") {
+    return record.openedAt === null ? { openedAt: now.toISOString() } : null;
+  }
+  return { action, actionAt: now.toISOString() };
+}
+
+export async function updateDelivery(
+  deliveryId: string,
+  fields: Record<string, string>,
+): Promise<void> {
+  await deliveriesCollection().doc(deliveryId).update(fields);
+}

@@ -13,18 +13,28 @@
  * routes belong here; the user-facing automation routes (Step 7) go in
  * their own router behind requireAuth.
  */
+import { DeliveryResponseRequest, DeviceTokenRequest } from "@otto/shared";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { OAuth2Client, type TokenPayload } from "google-auth-library";
 
 import { loadCalendarView, purgeExpiredViews } from "../automations/calendarView.js";
+import {
+  deliveryResponseUpdate,
+  loadOwnedDelivery,
+  updateDelivery,
+} from "../automations/deliver.js";
 import { executeAutomation } from "../automations/handlers.js";
 import { runTick } from "../automations/tick.js";
 import {
   claimAutomation,
   completeAutomationRun,
   loadDueAutomations,
+  updateAutomationScheduling,
 } from "../automations/store.js";
-import { AppError } from "../errors.js";
+import { AppError, parseOrThrow } from "../errors.js";
+import { logInfo } from "../log.js";
+import { requireUid } from "../middleware/auth.js";
+import { registerDeviceToken } from "../automations/push.js";
 
 export interface SchedulerConfig {
   readonly invoker: string;
@@ -92,6 +102,67 @@ async function requireScheduler(req: Request, _res: Response, next: NextFunction
 }
 
 export const automationsTickRouter = Router();
+
+/**
+ * The user-facing half: device registration and push responses. Mounted
+ * BEHIND requireAuth in index.ts — never on the tick router above.
+ */
+export const automationsUserRouter = Router();
+
+/** How far a Snooze pushes the automation's next fire. */
+export const SNOOZE_MINUTES = 30;
+
+automationsUserRouter.post(
+  "/devices",
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const uid = requireUid(req);
+      const request = parseOrThrow(DeviceTokenRequest, req.body, "device token request");
+      const count = await registerDeviceToken(uid, request.token);
+      logInfo("device_token_registered", { userId: uid, deviceCount: count });
+      res.json({ ok: true, devices: count });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+automationsUserRouter.post(
+  "/response",
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const uid = requireUid(req);
+      const request = parseOrThrow(DeliveryResponseRequest, req.body, "delivery response");
+      const delivery = await loadOwnedDelivery(request.deliveryId, uid);
+      if (delivery === null) {
+        throw new AppError(404, "not_found", "No such delivery.");
+      }
+      const now = new Date();
+      const fields = deliveryResponseUpdate(delivery, request.action, now);
+      if (fields !== null) {
+        await updateDelivery(delivery.id, fields);
+      }
+      if (request.action === "snoozed") {
+        // Re-fire the automation shortly; the handler regenerates with
+        // FRESH data rather than replaying a stale body. The automation
+        // may have been deleted since the push — then the snooze is moot.
+        const snoozeUntil = new Date(now.getTime() + SNOOZE_MINUTES * 60_000);
+        await updateAutomationScheduling(delivery.automationId, {
+          nextRunAt: snoozeUntil.toISOString(),
+        }).catch(() => {});
+      }
+      logInfo("delivery_response", {
+        userId: uid,
+        deliveryId: delivery.id,
+        automationId: delivery.automationId,
+        action: request.action,
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 automationsTickRouter.post(
   "/tick",

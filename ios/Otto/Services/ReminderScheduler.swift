@@ -33,6 +33,10 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// app start.
     var onBriefNotificationTapped: (@MainActor () -> Void)?
 
+    /// An automation push was answered (tapped, snoozed, or "Not today").
+    /// The conversation model reports it and follows the deep link.
+    var onAutomationResponse: (@MainActor (AutomationPush, DeliveryAction) -> Void)?
+
     override init() {
         super.init()
         // Foreground presentation: a reminder firing while Otto is open
@@ -151,6 +155,17 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
+        // Automation pushes carry a deliveryId in their data payload; the
+        // OS swipe-away parses to nil action and is deliberately ignored.
+        if let push = AutomationPush.parse(userInfo: response.notification.request.content.userInfo) {
+            guard let action = DeliveryAction.from(actionIdentifier: response.actionIdentifier) else {
+                return
+            }
+            await MainActor.run {
+                self.onAutomationResponse?(push, action)
+            }
+            return
+        }
         let id = response.notification.request.identifier
         guard id.hasPrefix(Self.briefIdentifierPrefix) else { return }
         await MainActor.run {
