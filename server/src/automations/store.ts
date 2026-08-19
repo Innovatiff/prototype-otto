@@ -106,6 +106,29 @@ export async function claimAutomation(id: string, now: Date): Promise<Automation
   });
 }
 
+/** Every automation the user owns. Equality-only query; counts are small. */
+export async function loadOwnerAutomations(uid: string): Promise<Automation[]> {
+  const snapshot = await automationsCollection().where("ownerId", "==", uid).get();
+  const automations: Automation[] = [];
+  for (const doc of snapshot.docs) {
+    const parsed = Automation.safeParse(doc.data());
+    if (parsed.success) {
+      automations.push(parsed.data);
+    } else {
+      logWarning("automation_doc_corrupt", { automationId: doc.id });
+    }
+  }
+  return automations;
+}
+
+/** Applies one rearm update — targeted fields only, locks untouched. */
+export async function updateAutomationScheduling(
+  id: string,
+  fields: { timezone?: string; nextRunAt?: string | null },
+): Promise<void> {
+  await automationsCollection().doc(id).update({ ...fields });
+}
+
 export interface RunCompletion {
   readonly lastRunAt: string;
   readonly lastResult: AutomationRunResult;

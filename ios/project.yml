@@ -51,8 +51,12 @@ targets:
         # Guided sessions keep the audio session live and speak cues with the
         # screen locked — a workout timer that dies mid-set is useless. Otto
         # genuinely plays audio for the whole session, which is the
-        # legitimate, App Store-compliant use of this mode.
-        UIBackgroundModes: [audio]
+        # legitimate, App Store-compliant use of this mode. `fetch` powers
+        # the daily background calendar-view refresh (BGAppRefreshTask).
+        UIBackgroundModes: [audio, fetch]
+        # The background calendar refresh task; must match
+        # CalendarSyncService.backgroundTaskId.
+        BGTaskSchedulerPermittedIdentifiers: [com.yourname.otto.calendar-refresh]
         NSMicrophoneUsageDescription: "Otto listens so you can talk to it."
         NSSpeechRecognitionUsageDescription: "Otto transcribes your speech on this device to understand you."
         # Required for a physical device to reach the dev server on the Mac's

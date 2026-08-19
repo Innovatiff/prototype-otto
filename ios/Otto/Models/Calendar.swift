@@ -120,6 +120,120 @@ enum CalendarProposal: Codable, Hashable, Sendable {
     }
 }
 
+struct CalendarSyncEvent: Codable, Hashable, Sendable, Identifiable {
+    var id: String
+    var title: String
+    var startsAt: Date
+    var endsAt: Date
+    var location: String?
+    var attendeeCount: Int
+
+    init(
+        id: String,
+        title: String,
+        startsAt: Date,
+        endsAt: Date,
+        location: String? = nil,
+        attendeeCount: Int
+    ) {
+        self.id = id
+        self.title = title
+        self.startsAt = startsAt
+        self.endsAt = endsAt
+        self.location = location
+        self.attendeeCount = attendeeCount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case startsAt
+        case endsAt
+        case location
+        case attendeeCount
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.startsAt = try container.decode(Date.self, forKey: .startsAt)
+        self.endsAt = try container.decode(Date.self, forKey: .endsAt)
+        self.location = try container.decodeIfPresent(String.self, forKey: .location)
+        self.attendeeCount = try container.decode(Int.self, forKey: .attendeeCount)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.title, forKey: .title)
+        try container.encode(self.startsAt, forKey: .startsAt)
+        try container.encode(self.endsAt, forKey: .endsAt)
+        try container.encodeIfPresent(self.location, forKey: .location)
+        try container.encode(self.attendeeCount, forKey: .attendeeCount)
+    }
+}
+
+struct CalendarSyncRequest: Codable, Hashable, Sendable {
+    var events: [CalendarSyncEvent]
+    var timezone: String
+
+    init(
+        events: [CalendarSyncEvent],
+        timezone: String
+    ) {
+        self.events = events
+        self.timezone = timezone
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case events
+        case timezone
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.events = try container.decode([CalendarSyncEvent].self, forKey: .events)
+        self.timezone = try container.decode(String.self, forKey: .timezone)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.events, forKey: .events)
+        try container.encode(self.timezone, forKey: .timezone)
+    }
+}
+
+struct CalendarSyncResponse: Codable, Hashable, Sendable {
+    var stored: Int
+    var rearmed: Int
+
+    init(
+        stored: Int,
+        rearmed: Int
+    ) {
+        self.stored = stored
+        self.rearmed = rearmed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case stored
+        case rearmed
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.stored = try container.decode(Int.self, forKey: .stored)
+        self.rearmed = try container.decode(Int.self, forKey: .rearmed)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.stored, forKey: .stored)
+        try container.encode(self.rearmed, forKey: .rearmed)
+    }
+}
+
 struct Conflict: Codable, Hashable, Sendable {
     var eventA: CalendarEvent
     var eventB: CalendarEvent

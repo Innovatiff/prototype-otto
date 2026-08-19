@@ -32,6 +32,11 @@ final class CalendarService {
 
     // MARK: - Access
 
+    /// Whether full read access already exists — without prompting.
+    var hasFullAccess: Bool {
+        EKEventStore.authorizationStatus(for: .event) == .fullAccess
+    }
+
     private func ensureAccess() async throws {
         switch EKEventStore.authorizationStatus(for: .event) {
         case .fullAccess:
@@ -146,6 +151,61 @@ final class CalendarService {
             throw CalendarServiceError.saveFailed
         }
         return id
+    }
+
+    // MARK: - Sync view (Phase 6 automations)
+
+    /// The compressed 48-hour view the automations sync uploads: title,
+    /// times, location, attendee COUNT. Notes, descriptions, and attendee
+    /// identities never enter this shape. Returns empty without prompting —
+    /// sync is ambient and must never trigger the permission dialog.
+    func syncViewIfAuthorized(now: Date = Date()) -> [CalendarSyncEvent] {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
+            return []
+        }
+        let horizon = now.addingTimeInterval(48 * 60 * 60)
+        let predicate = store.predicateForEvents(withStart: now, end: horizon, calendars: nil)
+        return store.events(matching: predicate)
+            .compactMap { event in
+                guard let id = event.eventIdentifier,
+                      let start = event.startDate,
+                      let end = event.endDate
+                else { return nil }
+                return Self.syncEvent(
+                    id: id,
+                    title: event.title,
+                    startsAt: start,
+                    endsAt: end,
+                    location: event.location,
+                    attendeeCount: event.attendees?.count ?? 0
+                )
+            }
+            .sorted { $0.startsAt < $1.startsAt }
+    }
+
+    /// Pure normalizer behind the EventKit mapping — bounds enforced here so
+    /// the server's schema (title ≤200, count 0...500) can never reject a
+    /// sync over one odd event.
+    nonisolated static func syncEvent(
+        id: String,
+        title: String?,
+        startsAt: Date,
+        endsAt: Date,
+        location: String?,
+        attendeeCount: Int
+    ) -> CalendarSyncEvent? {
+        guard !id.isEmpty, endsAt > startsAt else { return nil }
+        let trimmedTitle = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let boundedTitle = String((trimmedTitle.isEmpty ? "Untitled" : trimmedTitle).prefix(200))
+        let trimmedLocation = location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return CalendarSyncEvent(
+            id: id,
+            title: boundedTitle,
+            startsAt: startsAt,
+            endsAt: endsAt,
+            location: trimmedLocation.isEmpty ? nil : String(trimmedLocation.prefix(200)),
+            attendeeCount: min(max(attendeeCount, 0), 500)
+        )
     }
 
     // MARK: - Mapping

@@ -11,6 +11,9 @@ struct ConversationView: View {
     @Bindable var memory: MemoryModel
     @Bindable var tasks: TasksModel
     @Bindable var plans: PlansModel
+    /// Owned by the app; the settings sheet flips its consent and the view
+    /// kicks an immediate first sync on opt-in.
+    var calendarSync: CalendarSyncService
     @State private var showingSettings = false
     @State private var showingHub = false
 
@@ -73,9 +76,19 @@ struct ConversationView: View {
             GuidanceView(runtime: model.guidance)
         }
         .sheet(isPresented: $showingSettings) {
-            DebugView(model: settings, onBriefScheduleChange: { enabled, hour, minute in
-                model.setBriefSchedule(enabled: enabled, hour: hour, minute: minute)
-            })
+            DebugView(
+                model: settings,
+                onBriefScheduleChange: { enabled, hour, minute in
+                    model.setBriefSchedule(enabled: enabled, hour: hour, minute: minute)
+                },
+                onCalendarSyncChange: { enabled in
+                    if enabled {
+                        // Consent just granted — push the first view now so
+                        // meeting prep can arm today, not tomorrow.
+                        Task { await calendarSync.syncIfNeeded(force: true) }
+                    }
+                }
+            )
         }
         .sheet(item: $model.composeRequest) { request in
             MessageComposeView(request: request) {

@@ -79,6 +79,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Synced calendar views (the compressed 48-hour automation context)
+    // are written through the API and read only by the scheduler. Not even
+    // the owner reads them back — the phone already has the calendar.
+    match /calendar_views/{userId} {
+      allow read, write: if false;
+    }
+
     // Morning briefs are stored server-side for day-to-day continuity;
     // clients receive them over the API only.
     match /briefs/{briefId} {

@@ -19,7 +19,11 @@
  * INTERVAL>1, UNTIL, COUNT) is rejected loudly at parse time rather than
  * silently misfiring for months.
  */
-import type { AutomationSchedule } from "@otto/shared";
+import type {
+  AutomationEventFilter,
+  AutomationSchedule,
+  CalendarSyncEvent,
+} from "@otto/shared";
 import { DateTime, IANAZone } from "luxon";
 
 /** luxon weekday numbers: 1 = Monday ... 7 = Sunday. */
@@ -170,21 +174,67 @@ export function nextFixedRun(
   return null;
 }
 
+/** Whether a synced event qualifies for a relative schedule's filter. */
+export function matchesEventFilter(
+  event: CalendarSyncEvent,
+  filter: AutomationEventFilter,
+): boolean {
+  if (filter.minAttendees !== undefined && event.attendeeCount < filter.minAttendees) {
+    return false;
+  }
+  if (filter.keywords !== undefined && filter.keywords.length > 0) {
+    const title = event.title.toLowerCase();
+    return filter.keywords.some((keyword) => title.includes(keyword.toLowerCase()));
+  }
+  return true;
+}
+
+/**
+ * The earliest `event.start - minutesBefore` that is STRICTLY after
+ * `after`, across matching synced events. Strictness is load-bearing twice
+ * over: a meeting learned of mid-window (20 minutes out, prep set to 30)
+ * never fires — its moment predates our knowing about it — and a meeting
+ * just prepped can't re-arm itself, because its fire instant is now in the
+ * past. No state, no double-prep.
+ */
+export function nextEventRun(
+  minutesBefore: number,
+  filter: AutomationEventFilter,
+  events: readonly CalendarSyncEvent[],
+  after: Date,
+): Date | null {
+  let earliest: number | null = null;
+  for (const event of events) {
+    if (!matchesEventFilter(event, filter)) {
+      continue;
+    }
+    const startMs = Date.parse(event.startsAt);
+    if (Number.isNaN(startMs)) {
+      continue;
+    }
+    const fireMs = startMs - minutesBefore * 60_000;
+    if (fireMs > after.getTime() && (earliest === null || fireMs < earliest)) {
+      earliest = fireMs;
+    }
+  }
+  return earliest === null ? null : new Date(earliest);
+}
+
 /**
  * The next fire instant for any schedule, strictly after `after`.
  *
- * relative_to_event schedules return null here: their next run is derived
- * from the synced 48-hour calendar view (Step 2), not from a rule — with no
- * matching event ahead, the automation is dormant and the tick never
- * touches it.
+ * relative_to_event schedules are derived from the synced 48-hour calendar
+ * view — with no view, or no matching event ahead, they return null and the
+ * automation is dormant until the next sync (or run) re-arms it.
  */
 export function nextRunAt(
   schedule: AutomationSchedule,
   timezone: string,
   after: Date,
+  events: readonly CalendarSyncEvent[] = [],
 ): Date | null {
   if (schedule.kind === "fixed") {
     return nextFixedRun(schedule.rrule, schedule.timeOfDay, timezone, after);
   }
-  return null;
+  return nextEventRun(schedule.minutesBefore, schedule.eventFilter, events, after);
 }

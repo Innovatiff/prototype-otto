@@ -109,6 +109,20 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
     lockedUntil: "2026-08-19T11:02:00.000Z",
     createdAt: "2026-08-01T00:00:00.000Z",
   });
+  await setDoc(doc(db, `calendar_views/${ALICE}`), {
+    ownerId: ALICE,
+    syncedAt: "2026-08-19T11:00:00.000Z",
+    timezone: "America/New_York",
+    events: [
+      {
+        id: "evt-1",
+        title: "Henderson review",
+        startsAt: "2026-08-19T13:30:00.000Z",
+        endsAt: "2026-08-19T14:00:00.000Z",
+        attendeeCount: 3,
+      },
+    ],
+  });
   await setDoc(doc(db, "cost_events/evt-1"), {
     userId: ALICE,
     turnId: "turn-1",
@@ -310,6 +324,19 @@ test("automations: server-only — the owner cannot read, list, toggle, or unloc
       createdAt: "2026-08-01T00:00:00.000Z",
     }),
   );
+});
+
+test("calendar_views: server-only — the owner cannot read back or forge their view", async () => {
+  await assertFails(getDoc(doc(alice, `calendar_views/${ALICE}`)));
+  await assertFails(
+    setDoc(doc(alice, `calendar_views/${ALICE}`), {
+      ownerId: ALICE,
+      syncedAt: "2026-08-19T11:00:00.000Z",
+      timezone: "America/New_York",
+      events: [],
+    }),
+  );
+  await assertFails(deleteDoc(doc(alice, `calendar_views/${ALICE}`)));
 });
 
 test("cost_events: no client read or write, even by the user it concerns", async () => {

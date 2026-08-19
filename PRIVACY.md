@@ -27,6 +27,30 @@ active energy), so your Health activity history stays complete.
   history, not in memory, not in logs.
 - It is **never used for advertising or analytics** of any kind.
 
+## Calendar
+
+Otto reads your calendar on-device (with iOS permission) to answer
+questions about your day and flag conflicts.
+
+**Calendar sync is separate and off by default.** If you turn it on in
+Settings, Otto uploads a compressed view of your **next 48 hours** so
+automations — meeting preparation, morning briefings — can run for you on a
+schedule. That view contains only:
+
+- event titles,
+- start and end times,
+- locations,
+- the **number** of attendees.
+
+**What never leaves your device**: event notes, descriptions, attachments,
+and attendee names or email addresses. The synced view cannot carry them —
+the data format has no fields for them.
+
+**Retention**: the server keeps each synced view for at most **48 hours**
+and then deletes it. If sync stops (you turn it off, or revoke calendar
+permission), the last view simply expires and calendar-dependent
+automations stop running rather than guessing.
+
 ## Voice
 
 Speech is transcribed **on your device**. Only the resulting text of what

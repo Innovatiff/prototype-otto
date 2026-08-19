@@ -137,13 +137,17 @@ struct DebugView: View {
     /// Optional hook the conversation screen provides so the wake-time
     /// controls can (re)schedule the weekday brief notifications.
     var onBriefScheduleChange: ((Bool, Int, Int) -> Void)?
+    /// Fired when the calendar-sync consent toggle changes.
+    var onCalendarSyncChange: ((Bool) -> Void)?
     @State private var briefEnabled = false
     @State private var wakeTime = Date()
+    @State private var calendarSyncEnabled = false
 
     var body: some View {
         NavigationStack {
             Form {
                 briefSection
+                calendarSyncSection
                 serverSection
                 accountSection
                 converseSection
@@ -155,7 +159,37 @@ struct DebugView: View {
                 components.hour = UserDefaults.standard.object(forKey: "otto.brief.hour") as? Int ?? 7
                 components.minute = UserDefaults.standard.object(forKey: "otto.brief.minute") as? Int ?? 30
                 wakeTime = Calendar.current.date(from: components) ?? Date()
+                calendarSyncEnabled = UserDefaults.standard.bool(forKey: CalendarSyncService.consentKey)
             }
+        }
+    }
+
+    /// The consent screen for calendar sync. The footer is the contract:
+    /// what leaves the device, what never does, and how long it lives.
+    private var calendarSyncSection: some View {
+        Section {
+            Toggle("Calendar sync", isOn: $calendarSyncEnabled)
+                .onChange(of: calendarSyncEnabled) { _, enabled in
+                    // onAppear seeds this state from defaults; only a REAL
+                    // change (the user's tap) may write and kick a sync.
+                    let stored = UserDefaults.standard.bool(forKey: CalendarSyncService.consentKey)
+                    guard stored != enabled else { return }
+                    UserDefaults.standard.set(enabled, forKey: CalendarSyncService.consentKey)
+                    onCalendarSyncChange?(enabled)
+                }
+        } header: {
+            Text("Calendar")
+        } footer: {
+            Text(
+                """
+                Lets Otto prepare you for meetings and mention your schedule \
+                in briefings. Otto uploads a compressed view of your next \
+                48 hours — event titles, times, locations, and how many \
+                people are attending. Notes, descriptions, and attendee \
+                names or emails never leave this device. The server keeps \
+                the view for at most 48 hours, then deletes it.
+                """
+            )
         }
     }
 

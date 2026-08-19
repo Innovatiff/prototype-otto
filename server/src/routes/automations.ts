@@ -16,6 +16,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { OAuth2Client, type TokenPayload } from "google-auth-library";
 
+import { loadCalendarView, purgeExpiredViews } from "../automations/calendarView.js";
 import { executeAutomation } from "../automations/handlers.js";
 import { runTick } from "../automations/tick.js";
 import {
@@ -103,6 +104,8 @@ automationsTickRouter.post(
         claim: claimAutomation,
         complete: completeAutomationRun,
         execute: (automation, ctx) => executeAutomation(automation, ctx),
+        loadView: loadCalendarView,
+        purgeViews: purgeExpiredViews,
       });
       res.json({ ok: true, ...summary });
     } catch (err) {

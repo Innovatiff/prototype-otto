@@ -14,6 +14,8 @@ struct OttoApp: App {
     @State private var memory: MemoryModel
     @State private var tasks: TasksModel
     @State private var plans: PlansModel
+    @State private var calendarSync: CalendarSyncService
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         FirebaseApp.configure()
@@ -28,13 +30,22 @@ struct OttoApp: App {
         let auth = EmailPasswordAuth()
         let tasksModel = TasksModel(auth: auth)
         let plansModel = PlansModel(auth: auth)
+        let calendarService = CalendarService()
         _settings = State(initialValue: DebugModel(auth: auth))
         _tasks = State(initialValue: tasksModel)
         _plans = State(initialValue: plansModel)
         _conversation = State(
-            initialValue: ConversationModel(auth: auth, tasksModel: tasksModel, plansModel: plansModel)
+            initialValue: ConversationModel(
+                auth: auth,
+                tasksModel: tasksModel,
+                plansModel: plansModel,
+                calendarService: calendarService
+            )
         )
         _memory = State(initialValue: MemoryModel(auth: auth))
+        _calendarSync = State(
+            initialValue: CalendarSyncService(auth: auth, calendar: calendarService)
+        )
     }
 
     var body: some Scene {
@@ -44,11 +55,29 @@ struct OttoApp: App {
                 settings: settings,
                 memory: memory,
                 tasks: tasks,
-                plans: plans
+                plans: plans,
+                calendarSync: calendarSync
             )
                 // Otto's stage is dark-first and monochrome; sheets inherit.
                 .preferredColorScheme(.dark)
                 .tint(.white)
+        }
+        // The sync half of the automations contract: a (throttled) push of
+        // the compressed 48-hour view on every foreground, and a queued
+        // background refresh so the server's copy stays under its 24-hour
+        // staleness line even when the app sits closed.
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active:
+                Task { await calendarSync.syncIfNeeded() }
+            case .background:
+                calendarSync.scheduleBackgroundRefresh()
+            default:
+                break
+            }
+        }
+        .backgroundTask(.appRefresh(CalendarSyncService.backgroundTaskId)) {
+            await calendarSync.handleBackgroundRefresh()
         }
     }
 }

@@ -8,6 +8,7 @@ import { test } from "node:test";
 
 import type { Automation } from "@otto/shared";
 
+import type { CalendarView } from "../src/automations/calendarView.js";
 import { evaluateClaim, type RunCompletion } from "../src/automations/store.js";
 import {
   MAX_PER_TICK,
@@ -15,6 +16,7 @@ import {
   isStaleFire,
   runTick,
   type TickDeps,
+  type TickSummary,
 } from "../src/automations/tick.js";
 import { isAuthorizedInvoker, schedulerConfig } from "../src/routes/automations.js";
 
@@ -48,6 +50,7 @@ function makeDeps(
   options: {
     claimDenied?: Set<string>;
     execute?: TickDeps["execute"];
+    view?: CalendarView | null;
   } = {},
 ): { deps: TickDeps; journal: Journal } {
   const journal: Journal = { executed: [], completed: new Map() };
@@ -73,14 +76,30 @@ function makeDeps(
         journal.executed.push(candidate.id);
         return Promise.resolve("delivered" as const);
       }),
+    loadView: () => Promise.resolve(options.view ?? null),
+    purgeViews: () => Promise.resolve(0),
   };
   return { deps, journal };
+}
+
+function summaryOf(overrides: Partial<TickSummary>): TickSummary {
+  return {
+    due: 0,
+    claimed: 0,
+    delivered: 0,
+    suppressed: 0,
+    failed: 0,
+    stale: 0,
+    noCalendar: 0,
+    purgedViews: 0,
+    ...overrides,
+  };
 }
 
 test("a due automation is claimed, executed, and advanced to tomorrow's occurrence", async () => {
   const { deps, journal } = makeDeps([automation("a1")]);
   const summary = await runTick(deps);
-  assert.deepEqual(summary, { due: 1, claimed: 1, delivered: 1, suppressed: 0, failed: 0, stale: 0 });
+  assert.deepEqual(summary, summaryOf({ due: 1, claimed: 1, delivered: 1 }));
   assert.deepEqual(journal.executed, ["a1"]);
   const completion = journal.completed.get("a1");
   assert.equal(completion?.lastResult, "delivered");
@@ -104,7 +123,7 @@ test("a handler throw records 'failed', delivers nothing, and still advances the
     execute: () => Promise.reject(new Error("model exploded")),
   });
   const summary = await runTick(deps);
-  assert.deepEqual(summary, { due: 1, claimed: 1, delivered: 0, suppressed: 0, failed: 1, stale: 0 });
+  assert.deepEqual(summary, summaryOf({ due: 1, claimed: 1, failed: 1 }));
   const completion = journal.completed.get("a1");
   assert.equal(completion?.lastResult, "failed");
   // Failure must not spin: the next attempt is the next occurrence, not
@@ -117,7 +136,7 @@ test("a fire more than an hour past its moment is suppressed WITHOUT running the
     automation("a1", { nextRunAt: "2026-08-19T05:00:00.000Z" }), // six hours late
   ]);
   const summary = await runTick(deps);
-  assert.deepEqual(summary, { due: 1, claimed: 1, delivered: 0, suppressed: 1, failed: 0, stale: 1 });
+  assert.deepEqual(summary, summaryOf({ due: 1, claimed: 1, suppressed: 1, stale: 1 }));
   assert.deepEqual(journal.executed, []);
   assert.equal(journal.completed.get("a1")?.lastResult, "suppressed");
 });
@@ -170,6 +189,77 @@ test("completionFor stamps the run and recomputes from the rule in-zone", () => 
     lastResult: "suppressed",
     nextRunAt: "2026-08-20T11:00:00.000Z",
   });
+});
+
+function meetingPrep(id: string, overrides: Partial<Automation> = {}): Automation {
+  return automation(id, {
+    type: "meeting_prep",
+    schedule: { kind: "relative_to_event", minutesBefore: 30, eventFilter: { minAttendees: 2 } },
+    action: { kind: "meeting_prep", params: {} },
+    ...overrides,
+  });
+}
+
+const FRESH_VIEW: CalendarView = {
+  events: [
+    {
+      id: "evt-1",
+      title: "Henderson review",
+      startsAt: "2026-08-19T11:30:00.000Z", // fires again at 11:00 — in the past now
+      endsAt: "2026-08-19T12:00:00.000Z",
+      attendeeCount: 3,
+    },
+    {
+      id: "evt-2",
+      title: "Design sync",
+      startsAt: "2026-08-19T15:00:00.000Z",
+      endsAt: "2026-08-19T16:00:00.000Z",
+      attendeeCount: 4,
+    },
+  ],
+  syncedAt: "2026-08-19T10:00:00.000Z",
+  timezone: "America/New_York",
+  stale: false,
+};
+
+test("a calendar-dependent automation with NO synced view is suppressed without executing", async () => {
+  const { deps, journal } = makeDeps([meetingPrep("m1")], { view: null });
+  const summary = await runTick(deps);
+  assert.deepEqual(summary, summaryOf({ due: 1, claimed: 1, suppressed: 1, noCalendar: 1 }));
+  assert.deepEqual(journal.executed, []);
+});
+
+test("a calendar-dependent automation with a STALE view (>24h) is suppressed without executing", async () => {
+  const { deps, journal } = makeDeps([meetingPrep("m1")], {
+    view: { ...FRESH_VIEW, stale: true },
+  });
+  const summary = await runTick(deps);
+  assert.equal(summary.noCalendar, 1);
+  assert.deepEqual(journal.executed, []);
+});
+
+test("with a fresh view the prep runs, sees the calendar, and re-arms on the NEXT meeting only", async () => {
+  let seenEvents = 0;
+  const { deps, journal } = makeDeps([meetingPrep("m1")], {
+    view: FRESH_VIEW,
+    execute: (_automation, ctx) => {
+      seenEvents = ctx.calendar?.events.length ?? 0;
+      return Promise.resolve("delivered" as const);
+    },
+  });
+  const summary = await runTick(deps);
+  assert.equal(summary.delivered, 1);
+  assert.equal(seenEvents, 2);
+  // The 11:30 meeting's fire instant (11:00) is behind us — strictly-after
+  // re-arms on the 15:00 meeting (14:30), never re-prepping the same one.
+  assert.equal(journal.completed.get("m1")?.nextRunAt, "2026-08-19T14:30:00.000Z");
+});
+
+test("a fixed automation runs fine with no calendar at all — only relative ones depend on it", async () => {
+  const { deps, journal } = makeDeps([automation("a1")], { view: null });
+  const summary = await runTick(deps);
+  assert.equal(summary.delivered, 1);
+  assert.deepEqual(journal.executed, ["a1"]);
 });
 
 // ── evaluateClaim: the transactional predicate, pure ────────────────

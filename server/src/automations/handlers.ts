@@ -9,6 +9,8 @@
  */
 import type { Automation } from "@otto/shared";
 
+import type { CalendarView } from "./calendarView.js";
+
 /**
  * "suppressed" is a success: the handler ran, decided there was nothing
  * worth saying, and said nothing. Handlers never return "failed" — failure
@@ -20,6 +22,12 @@ export interface AutomationRunContext {
   /** The nextRunAt that triggered this run (ISO), for lateness decisions. */
   readonly scheduledFor: string | null;
   readonly now: Date;
+  /**
+   * The owner's synced 48-hour view, if one exists. `stale` means older
+   * than 24 hours — enrich-only handlers (briefs) should drop the calendar
+   * section rather than narrate yesterday's schedule.
+   */
+  readonly calendar: CalendarView | null;
 }
 
 export type AutomationHandler = (

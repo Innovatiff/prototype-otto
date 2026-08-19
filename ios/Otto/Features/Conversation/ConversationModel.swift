@@ -229,7 +229,7 @@ final class ConversationModel {
     /// The structured half of the brief, rendered while Otto speaks.
     private(set) var briefCard: BriefCard?
     private(set) var briefRunning = false
-    private let calendarService = CalendarService()
+    let calendarService: CalendarService
 
     private static let briefEnabledKey = "otto.brief.enabled"
     private static let briefHourKey = "otto.brief.hour"
@@ -276,10 +276,16 @@ final class ConversationModel {
     private var eventTask: Task<Void, Never>?
     private var levelTask: Task<Void, Never>?
 
-    init(auth: any AuthProvider, tasksModel: TasksModel, plansModel: PlansModel) {
+    init(
+        auth: any AuthProvider,
+        tasksModel: TasksModel,
+        plansModel: PlansModel,
+        calendarService: CalendarService = CalendarService()
+    ) {
         self.auth = auth
         self.tasksModel = tasksModel
         self.plansModel = plansModel
+        self.calendarService = calendarService
         let voiceLoop = VoiceLoop(auth: auth)
         self.voiceLoop = voiceLoop
         self.guidance = GuidanceRuntime(voiceLoop: voiceLoop, auth: auth)
