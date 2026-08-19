@@ -138,3 +138,30 @@ export const Automation = z.object({
   createdAt: isoDateTime,
 });
 export type Automation = z.infer<typeof Automation>;
+
+/** GET /automations — the management screen's data. */
+export const AutomationListResponse = z.object({
+  automations: z.array(Automation).max(100),
+  /** Effective quiet hours (defaults applied server-side). */
+  quietHoursStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  quietHoursEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+});
+export type AutomationListResponse = z.infer<typeof AutomationListResponse>;
+
+/**
+ * Edits the management screen can make. Absent fields stay untouched;
+ * timeOfDay applies only to fixed schedules (the server rejects it for
+ * event-relative ones).
+ */
+export const AutomationUpdateRequest = z.object({
+  enabled: z.boolean().optional(),
+  timeOfDay: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+});
+export type AutomationUpdateRequest = z.infer<typeof AutomationUpdateRequest>;
+
+/** User-level automation settings (quiet hours live on the profile). */
+export const AutomationSettingsRequest = z.object({
+  quietHoursStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  quietHoursEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+});
+export type AutomationSettingsRequest = z.infer<typeof AutomationSettingsRequest>;

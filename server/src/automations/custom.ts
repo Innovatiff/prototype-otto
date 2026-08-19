@@ -210,6 +210,69 @@ export function enabledUpdateFields(
   return { enabled: true, nextRunAt: next === null ? null : next.toISOString() };
 }
 
+// ── Management edits (Step 7's screen) ──────────────────────────────
+
+export type UpdateOutcome =
+  | {
+      readonly ok: true;
+      readonly fields: {
+        enabled?: boolean;
+        schedule?: AutomationSchedule;
+        nextRunAt: string | null;
+      };
+    }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * The targeted fields one management edit writes. Retiming applies only
+ * to fixed schedules; every accepted edit recomputes nextRunAt from the
+ * final state (disabled parks it; an event-relative enable waits for the
+ * next calendar sync). The user just touched this automation, so moving
+ * even a due-pending fire is their explicit intent.
+ */
+export function applyAutomationUpdate(
+  automation: Automation,
+  request: { enabled?: boolean; timeOfDay?: string },
+  now: Date,
+): UpdateOutcome {
+  if (request.enabled === undefined && request.timeOfDay === undefined) {
+    return { ok: false, error: "Nothing to update." };
+  }
+  let schedule = automation.schedule;
+  if (request.timeOfDay !== undefined) {
+    if (schedule.kind !== "fixed") {
+      return { ok: false, error: "Only fixed-time automations have a time to edit." };
+    }
+    schedule = { ...schedule, timeOfDay: request.timeOfDay };
+  }
+  const enabled = request.enabled ?? automation.enabled;
+  const next = enabled ? nextRunAt(schedule, automation.timezone, now) : null;
+  return {
+    ok: true,
+    fields: {
+      ...(request.enabled !== undefined ? { enabled } : {}),
+      ...(request.timeOfDay !== undefined ? { schedule } : {}),
+      nextRunAt: next === null ? null : next.toISOString(),
+    },
+  };
+}
+
+/** Built-ins in their canonical order, then customs by label. */
+export function sortForManagement(automations: readonly Automation[]): Automation[] {
+  const builtInOrder: Readonly<Record<string, number>> = {
+    morning_brief: 0,
+    evening_shutdown: 1,
+    meeting_prep: 2,
+    plan_checkin: 3,
+    weekly_review: 4,
+  };
+  return [...automations].sort((a, b) => {
+    const rankA = builtInOrder[a.type] ?? 100;
+    const rankB = builtInOrder[b.type] ?? 100;
+    return rankA - rankB || a.label.localeCompare(b.label);
+  });
+}
+
 // ── The fire-time handler ───────────────────────────────────────────
 
 /**

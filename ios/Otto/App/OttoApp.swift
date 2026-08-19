@@ -40,6 +40,7 @@ struct OttoApp: App {
     @State private var tasks: TasksModel
     @State private var plans: PlansModel
     @State private var calendarSync: CalendarSyncService
+    @State private var automations: AutomationsModel
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -71,6 +72,7 @@ struct OttoApp: App {
         _calendarSync = State(
             initialValue: CalendarSyncService(auth: auth, calendar: calendarService)
         )
+        _automations = State(initialValue: AutomationsModel(auth: auth))
     }
 
     var body: some Scene {
@@ -81,7 +83,8 @@ struct OttoApp: App {
                 memory: memory,
                 tasks: tasks,
                 plans: plans,
-                calendarSync: calendarSync
+                calendarSync: calendarSync,
+                automations: automations
             )
                 // Otto's stage is dark-first and monochrome; sheets inherit.
                 .preferredColorScheme(.dark)

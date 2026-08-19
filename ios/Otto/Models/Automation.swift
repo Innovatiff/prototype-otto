@@ -162,6 +162,42 @@ struct AutomationEventFilter: Codable, Hashable, Sendable {
     }
 }
 
+struct AutomationListResponse: Codable, Hashable, Sendable {
+    var automations: [Automation]
+    var quietHoursStart: String
+    var quietHoursEnd: String
+
+    init(
+        automations: [Automation],
+        quietHoursStart: String,
+        quietHoursEnd: String
+    ) {
+        self.automations = automations
+        self.quietHoursStart = quietHoursStart
+        self.quietHoursEnd = quietHoursEnd
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case automations
+        case quietHoursStart
+        case quietHoursEnd
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.automations = try container.decode([Automation].self, forKey: .automations)
+        self.quietHoursStart = try container.decode(String.self, forKey: .quietHoursStart)
+        self.quietHoursEnd = try container.decode(String.self, forKey: .quietHoursEnd)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.automations, forKey: .automations)
+        try container.encode(self.quietHoursStart, forKey: .quietHoursStart)
+        try container.encode(self.quietHoursEnd, forKey: .quietHoursEnd)
+    }
+}
+
 enum AutomationRunResult: String, Codable, Hashable, Sendable, CaseIterable {
     case delivered
     case suppressed
@@ -216,6 +252,36 @@ enum AutomationSchedule: Codable, Hashable, Sendable {
     }
 }
 
+struct AutomationSettingsRequest: Codable, Hashable, Sendable {
+    var quietHoursStart: String?
+    var quietHoursEnd: String?
+
+    init(
+        quietHoursStart: String? = nil,
+        quietHoursEnd: String? = nil
+    ) {
+        self.quietHoursStart = quietHoursStart
+        self.quietHoursEnd = quietHoursEnd
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case quietHoursStart
+        case quietHoursEnd
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.quietHoursStart = try container.decodeIfPresent(String.self, forKey: .quietHoursStart)
+        self.quietHoursEnd = try container.decodeIfPresent(String.self, forKey: .quietHoursEnd)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(self.quietHoursStart, forKey: .quietHoursStart)
+        try container.encodeIfPresent(self.quietHoursEnd, forKey: .quietHoursEnd)
+    }
+}
+
 enum AutomationType: String, Codable, Hashable, Sendable, CaseIterable {
     /// Wire value: `"morning_brief"`.
     case morningBrief = "morning_brief"
@@ -228,6 +294,36 @@ enum AutomationType: String, Codable, Hashable, Sendable, CaseIterable {
     /// Wire value: `"plan_checkin"`.
     case planCheckin = "plan_checkin"
     case custom
+}
+
+struct AutomationUpdateRequest: Codable, Hashable, Sendable {
+    var enabled: Bool?
+    var timeOfDay: String?
+
+    init(
+        enabled: Bool? = nil,
+        timeOfDay: String? = nil
+    ) {
+        self.enabled = enabled
+        self.timeOfDay = timeOfDay
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled
+        case timeOfDay
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+        self.timeOfDay = try container.decodeIfPresent(String.self, forKey: .timeOfDay)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(self.enabled, forKey: .enabled)
+        try container.encodeIfPresent(self.timeOfDay, forKey: .timeOfDay)
+    }
 }
 
 enum DeliveryAction: String, Codable, Hashable, Sendable, CaseIterable {

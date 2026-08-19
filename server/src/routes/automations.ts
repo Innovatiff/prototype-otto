@@ -13,7 +13,13 @@
  * routes belong here; the user-facing automation routes (Step 7) go in
  * their own router behind requireAuth.
  */
-import { DeliveryResponseRequest, DeviceTokenRequest } from "@otto/shared";
+import {
+  AutomationSettingsRequest,
+  AutomationUpdateRequest,
+  DeliveryResponseRequest,
+  DeviceTokenRequest,
+  type AutomationListResponse,
+} from "@otto/shared";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { OAuth2Client, type TokenPayload } from "google-auth-library";
 
@@ -28,14 +34,20 @@ import {
 } from "../automations/deliver.js";
 import { executeAutomation } from "../automations/handlers.js";
 import { runTick } from "../automations/tick.js";
+import { applyAutomationUpdate, sortForManagement } from "../automations/custom.js";
 import {
+  applyManagementUpdate,
   claimAutomation,
   completeAutomationRun,
+  deleteAutomationDoc,
   loadDueAutomations,
+  loadOwnerAutomations,
   loadOwnerQuietHours,
+  readOwnedAutomation,
   updateAutomationScheduling,
+  updateOwnerQuietHours,
 } from "../automations/store.js";
-import { AppError, parseOrThrow } from "../errors.js";
+import { AppError, IdParam, parseOrThrow } from "../errors.js";
 import { logInfo } from "../log.js";
 import { requireUid } from "../middleware/auth.js";
 import { registerDeviceToken } from "../automations/push.js";
@@ -115,6 +127,96 @@ export const automationsUserRouter = Router();
 
 /** How far a Snooze pushes the automation's next fire. */
 export const SNOOZE_MINUTES = 30;
+
+automationsUserRouter.get(
+  "/",
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const uid = requireUid(req);
+      const [automations, quiet] = await Promise.all([
+        loadOwnerAutomations(uid),
+        loadOwnerQuietHours(uid),
+      ]);
+      const body: AutomationListResponse = {
+        automations: sortForManagement(automations).slice(0, 100),
+        quietHoursStart: quiet.start,
+        quietHoursEnd: quiet.end,
+      };
+      res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+automationsUserRouter.post(
+  "/:id/update",
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const uid = requireUid(req);
+      const id = parseOrThrow(IdParam, req.params.id, "automation id");
+      const request = parseOrThrow(AutomationUpdateRequest, req.body, "automation update");
+      const automation = await readOwnedAutomation(id, uid);
+      if (automation === null) {
+        throw new AppError(404, "not_found", "No such automation.");
+      }
+      const outcome = applyAutomationUpdate(automation, request, new Date());
+      if (!outcome.ok) {
+        throw new AppError(400, "invalid_request", outcome.error);
+      }
+      await applyManagementUpdate(id, outcome.fields);
+      logInfo("automation_updated", {
+        userId: uid,
+        automationId: id,
+        enabled: request.enabled ?? null,
+        retimed: request.timeOfDay !== undefined,
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+automationsUserRouter.delete(
+  "/:id",
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const uid = requireUid(req);
+      const id = parseOrThrow(IdParam, req.params.id, "automation id");
+      const automation = await readOwnedAutomation(id, uid);
+      if (automation === null) {
+        throw new AppError(404, "not_found", "No such automation.");
+      }
+      if (automation.type !== "custom") {
+        throw new AppError(400, "invalid_request", "Built-in automations can be disabled, not deleted.");
+      }
+      await deleteAutomationDoc(id);
+      logInfo("automation_deleted", { userId: uid, automationId: id });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+automationsUserRouter.post(
+  "/settings",
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const uid = requireUid(req);
+      const request = parseOrThrow(AutomationSettingsRequest, req.body, "automation settings");
+      if (request.quietHoursStart === undefined && request.quietHoursEnd === undefined) {
+        throw new AppError(400, "invalid_request", "Nothing to update.");
+      }
+      await updateOwnerQuietHours(uid, request);
+      logInfo("quiet_hours_updated", { userId: uid });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 automationsUserRouter.post(
   "/devices",

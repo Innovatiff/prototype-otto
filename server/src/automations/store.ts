@@ -141,6 +141,33 @@ export async function loadOwnerQuietHours(uid: string): Promise<QuietHours> {
   return readQuietHours(snapshot.data());
 }
 
+/** Writes quiet-hours settings onto the profile. Merge — nothing else moves. */
+export async function updateOwnerQuietHours(
+  uid: string,
+  fields: { quietHoursStart?: string; quietHoursEnd?: string },
+): Promise<void> {
+  await db().collection(COLLECTIONS.users).doc(uid).set({ ...fields }, { merge: true });
+}
+
+/** One automation, owner-checked; null for missing and foreign alike. */
+export async function readOwnedAutomation(id: string, uid: string): Promise<Automation | null> {
+  const snapshot = await automationsCollection().doc(id).get();
+  const parsed = Automation.safeParse(snapshot.data());
+  return parsed.success && parsed.data.ownerId === uid ? parsed.data : null;
+}
+
+/**
+ * Applies a management edit's fields. The schedule map is wholly owned by
+ * configuration, so replacing it is safe; locks and counters are separate
+ * top-level fields a targeted update never touches.
+ */
+export async function applyManagementUpdate(
+  id: string,
+  fields: { enabled?: boolean; schedule?: Automation["schedule"]; nextRunAt: string | null },
+): Promise<void> {
+  await automationsCollection().doc(id).update({ ...fields });
+}
+
 /** Permanent removal (custom automations only; callers enforce that). */
 export async function deleteAutomationDoc(id: string): Promise<void> {
   await automationsCollection().doc(id).delete();

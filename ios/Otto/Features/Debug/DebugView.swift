@@ -133,6 +133,8 @@ final class DebugModel {
 /// streamed response rendering token by token as it arrives.
 struct DebugView: View {
     @Bindable var model: DebugModel
+    /// The automations management screen's state (owned by the app).
+    var automations: AutomationsModel
 
     /// Optional hook the conversation screen provides so the wake-time
     /// controls can (re)schedule the weekday brief notifications.
@@ -146,6 +148,7 @@ struct DebugView: View {
     var body: some View {
         NavigationStack {
             Form {
+                automationsSection
                 briefSection
                 calendarSyncSection
                 serverSection
@@ -160,6 +163,21 @@ struct DebugView: View {
                 components.minute = UserDefaults.standard.object(forKey: "otto.brief.minute") as? Int ?? 30
                 wakeTime = Calendar.current.date(from: components) ?? Date()
                 calendarSyncEnabled = UserDefaults.standard.bool(forKey: CalendarSyncService.consentKey)
+            }
+        }
+    }
+
+    private var automationsSection: some View {
+        Section {
+            NavigationLink {
+                AutomationsView(model: automations)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Automations")
+                    Text("Briefs, meeting prep, check-ins — and anything you create by voice.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

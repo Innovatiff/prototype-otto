@@ -14,6 +14,8 @@ struct ConversationView: View {
     /// Owned by the app; the settings sheet flips its consent and the view
     /// kicks an immediate first sync on opt-in.
     var calendarSync: CalendarSyncService
+    /// The automations management screen's state (settings sheet link).
+    var automations: AutomationsModel
     @State private var showingSettings = false
     @State private var showingHub = false
 
@@ -78,6 +80,7 @@ struct ConversationView: View {
         .sheet(isPresented: $showingSettings) {
             DebugView(
                 model: settings,
+                automations: automations,
                 onBriefScheduleChange: { enabled, hour, minute in
                     model.setBriefSchedule(enabled: enabled, hour: hour, minute: minute)
                 },
@@ -111,6 +114,16 @@ struct ConversationView: View {
         .task {
             model.activate()
             model.refreshAccount()
+            // Wake time edited on the automations screen keeps the LOCAL
+            // weekday brief notifications (the no-push fallback) in step.
+            automations.onWakeTimeChanged = { hour, minute in
+                let defaults = UserDefaults.standard
+                defaults.set(hour, forKey: "otto.brief.hour")
+                defaults.set(minute, forKey: "otto.brief.minute")
+                if defaults.bool(forKey: "otto.brief.enabled") {
+                    model.setBriefSchedule(enabled: true, hour: hour, minute: minute)
+                }
+            }
         }
     }
 
