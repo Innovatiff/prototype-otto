@@ -75,9 +75,14 @@ targets:
         # Remote push (automation deliveries). Xcode flips this to
         # `production` automatically for App Store builds.
         aps-environment: development
-        # Meeting prep interrupts focus (it expires with the meeting); the
-        # Phase 5 guidance backstop uses the same level.
-        com.apple.developer.usernotifications.time-sensitive: true
+        # DELIBERATELY ABSENT: com.apple.developer.usernotifications.time-sensitive.
+        # Xcode's automatic signing cannot map that entitlement from a
+        # file-based .entitlements ("USERNOTIFICATIONS_TIMESENSITIVE could
+        # not be determined") and aborts the WHOLE profile update, taking
+        # Push down with it. Everything degrades gracefully without it:
+        # iOS silently delivers our time-sensitive-labeled notifications
+        # (meeting prep pushes, the guidance backstop) at normal priority.
+        # Re-add if a future Xcode fixes the capability mapping.
     dependencies:
       - package: firebase-ios-sdk
         product: FirebaseAuth
