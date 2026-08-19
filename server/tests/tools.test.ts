@@ -32,6 +32,8 @@ test("exactly the specified tools, snake_case, unique", () => {
     "generate_plan",
     "adapt_plan",
     "draft_message",
+    "create_automation",
+    "manage_automations",
   ]);
   assert.equal(new Set(names).size, names.length);
   for (const name of names) {

@@ -21,6 +21,20 @@ import {
 } from "@otto/shared";
 import { z } from "zod";
 
+import {
+  buildCustomAutomation,
+  CustomAutomationInput,
+  describeSchedule,
+  enabledUpdateFields,
+  matchAutomation,
+} from "../automations/custom.js";
+import {
+  deleteAutomationDoc,
+  loadOwnerAutomations,
+  mintAutomationId,
+  saveAutomation,
+  updateAutomationScheduling,
+} from "../automations/store.js";
 import { COLLECTIONS, db } from "../firestore.js";
 import { errorFields, logInfo, logWarning } from "../log.js";
 import { tryEmbed } from "../memory/embed.js";
@@ -211,6 +225,8 @@ export interface ToolContext {
   uid: string;
   turnId: string;
   now: Date;
+  /** The device's IANA zone this turn — new automations anchor to it. */
+  timezone: string;
   /** Emits a TurnEvent onto the SSE stream (no-op once the client is gone). */
   emit: (event: TurnEvent) => void;
 }
@@ -535,6 +551,104 @@ function draftMessage(input: z.infer<typeof DraftMessageInput>, ctx: ToolContext
 }
 
 /** Dispatch. Unknown names and invalid inputs come back as is_error results. */
+// ── Automations (Phase 6) ───────────────────────────────────────────
+
+export const ManageAutomationsInput = z.object({
+  op: z.enum(["list", "enable", "disable", "delete"]),
+  label: z.string().min(1).max(200).optional(),
+});
+
+/**
+ * Create a voice-defined automation. The model parsed speech into the
+ * schedule; everything is re-validated here against the strict subset, and
+ * the result hands back the humanized schedule for the one-line confirm.
+ */
+async function createAutomationTool(
+  input: CustomAutomationInput,
+  ctx: ToolContext,
+): Promise<ToolExecution> {
+  const existing = await loadOwnerAutomations(ctx.uid);
+  const customCount = existing.filter((automation) => automation.type === "custom").length;
+  const built = buildCustomAutomation(
+    ctx.uid,
+    ctx.timezone,
+    input,
+    customCount,
+    ctx.now,
+    mintAutomationId,
+  );
+  if (!built.ok) {
+    return failure(built.error);
+  }
+  await saveAutomation(built.automation);
+  return {
+    result: JSON.stringify({
+      created: true,
+      label: built.automation.label,
+      schedule: describeSchedule(built.automation.schedule),
+      speak:
+        "Confirm in ONE short line using the schedule, e.g. " +
+        "'Done. Every Friday at 3:30.' Nothing else.",
+    }),
+  };
+}
+
+async function manageAutomationsTool(
+  input: z.infer<typeof ManageAutomationsInput>,
+  ctx: ToolContext,
+): Promise<ToolExecution> {
+  const automations = await loadOwnerAutomations(ctx.uid);
+  if (input.op === "list") {
+    return {
+      result: JSON.stringify({
+        automations: automations.map((automation) => ({
+          label: automation.label,
+          schedule: describeSchedule(automation.schedule),
+          enabled: automation.enabled,
+          builtIn: automation.type !== "custom",
+          lastResult: automation.lastResult ?? null,
+        })),
+        speak:
+          "Answer from this list in plain speech — names and schedules, " +
+          "never the raw data.",
+      }),
+    };
+  }
+  if (input.label === undefined) {
+    return failure("Say which automation — pass its name as `label`.");
+  }
+  const target = matchAutomation(automations, input.label);
+  if (target === null) {
+    return failure(
+      `No automation matches "${input.label}". Use op="list" to see what exists.`,
+    );
+  }
+  if (input.op === "delete") {
+    if (target.type !== "custom") {
+      return failure(
+        `"${target.label}" is built in — it can be disabled, not deleted.`,
+      );
+    }
+    await deleteAutomationDoc(target.id);
+    return {
+      result: JSON.stringify({
+        deleted: true,
+        label: target.label,
+        speak: "Confirm the deletion in one short sentence.",
+      }),
+    };
+  }
+  const enabled = input.op === "enable";
+  await updateAutomationScheduling(target.id, enabledUpdateFields(target, enabled, ctx.now));
+  return {
+    result: JSON.stringify({
+      [enabled ? "enabled" : "disabled"]: true,
+      label: target.label,
+      speak: "Confirm in one short sentence.",
+    }),
+  };
+}
+
 export async function executeToolUse(
   name: string,
   rawInput: unknown,
@@ -591,6 +705,21 @@ export async function executeToolUse(
         return parsed.success
           ? proposeCalendarMove(parsed.data, ctx)
           : failure("Invalid propose_calendar_move input (datetimes need offsets).");
+      }
+      case "create_automation": {
+        const parsed = CustomAutomationInput.safeParse(rawInput);
+        return parsed.success
+          ? await createAutomationTool(parsed.data, ctx)
+          : failure(
+              "Invalid create_automation input: timeOfDay must be zero-padded " +
+                "24h 'HH:mm', and the rrule must use the supported subset.",
+            );
+      }
+      case "manage_automations": {
+        const parsed = ManageAutomationsInput.safeParse(rawInput);
+        return parsed.success
+          ? await manageAutomationsTool(parsed.data, ctx)
+          : failure("Invalid manage_automations input.");
       }
       default:
         return failure(`Unknown tool: ${name}`);

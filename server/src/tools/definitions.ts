@@ -269,4 +269,70 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
       required: ["recipientName", "body"],
     },
   },
+  {
+    name: "create_automation",
+    description:
+      "Create a recurring automation that runs on its own schedule — " +
+      "'every Friday afternoon, check my calendar and text Rachel a " +
+      "summary'. Map spoken times: morning=08:00, midday/noon=12:00, " +
+      "afternoon=15:30, evening=18:30, night=21:00. If NO time can be " +
+      "inferred at all, ask ONE short clarifying question first — one, " +
+      "never two. The instruction is stored verbatim and executed with the " +
+      "user's real calendar, tasks, and memory each time it fires; " +
+      "composite instructions (check X AND Y, then draft Z) are fine. " +
+      "After the tool returns, confirm in ONE short line using the " +
+      "returned schedule, e.g. 'Done. Every Friday at 3:30.'",
+    input_schema: {
+      type: "object",
+      properties: {
+        label: {
+          type: "string",
+          description: "Short name shown in settings, e.g. 'Text Rachel gym check'.",
+        },
+        rrule: {
+          type: "string",
+          description:
+            "FREQ=DAILY or FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR,SA,SU (subset " +
+            "only — e.g. 'FREQ=WEEKLY;BYDAY=FR' for every Friday).",
+        },
+        timeOfDay: {
+          type: "string",
+          description: "Local wall-clock 24h 'HH:mm', zero-padded — 'afternoon' is '15:30'.",
+        },
+        instruction: {
+          type: "string",
+          description:
+            "What Otto should DO each time, verbatim from the user, e.g. " +
+            "'Check my calendar and my task list, then draft a text to " +
+            "Rachel asking if she's coming to the gym.'",
+        },
+      },
+      required: ["label", "rrule", "timeOfDay", "instruction"],
+    },
+  },
+  {
+    name: "manage_automations",
+    description:
+      "List, enable, disable, or delete the user's automations (the " +
+      "morning brief, meeting prep, and anything they created). Use " +
+      "op='list' to see them before answering questions about them. For " +
+      "enable/disable/delete, pass the automation's name as the user said " +
+      "it — matching is fuzzy. Built-in automations can be disabled but " +
+      "never deleted. Confirm changes in one short sentence.",
+    input_schema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: ["list", "enable", "disable", "delete"],
+          description: "What to do.",
+        },
+        label: {
+          type: "string",
+          description: "Which automation, as spoken — required for everything except 'list'.",
+        },
+      },
+      required: ["op"],
+    },
+  },
 ];

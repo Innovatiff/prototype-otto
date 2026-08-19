@@ -121,12 +121,22 @@ export async function loadOwnerAutomations(uid: string): Promise<Automation[]> {
   return automations;
 }
 
-/** Applies one rearm update — targeted fields only, locks untouched. */
+/** Applies one rearm/toggle update — targeted fields only, locks untouched. */
 export async function updateAutomationScheduling(
   id: string,
-  fields: { timezone?: string; nextRunAt?: string | null },
+  fields: { timezone?: string; nextRunAt?: string | null; enabled?: boolean },
 ): Promise<void> {
   await automationsCollection().doc(id).update({ ...fields });
+}
+
+/** Writes a freshly built automation document. */
+export async function saveAutomation(automation: Automation): Promise<void> {
+  await automationsCollection().doc(automation.id).set(automation);
+}
+
+/** Permanent removal (custom automations only; callers enforce that). */
+export async function deleteAutomationDoc(id: string): Promise<void> {
+  await automationsCollection().doc(id).delete();
 }
 
 export interface RunCompletion {

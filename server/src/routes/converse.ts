@@ -188,6 +188,7 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
               uid,
               turnId: turn.turnId,
               now: new Date(),
+              timezone: turn.timezone,
               emit: (event): void => {
                 if (!sink.closed) {
                   sink.write(sseMessage(event));

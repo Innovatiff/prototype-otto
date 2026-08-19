@@ -37,6 +37,7 @@ import {
   weeklyFacts,
   type SyncOverlap,
 } from "./content.js";
+import { customPromptHandler } from "./custom.js";
 import {
   loadRecentDeliveries,
   shouldSuppressIgnoredTitle,
@@ -336,4 +337,6 @@ export function registerBuiltInHandlers(): void {
   registerHandler("meeting_prep", meetingPrep);
   registerHandler("weekly_review", weeklyReview);
   registerHandler("plan_checkin", planCheckin);
+  // Voice-created automations all run through the one prompt handler.
+  registerHandler("custom", customPromptHandler);
 }
