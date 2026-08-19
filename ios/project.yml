@@ -83,6 +83,18 @@ targets:
         # iOS silently delivers our time-sensitive-labeled notifications
         # (meeting prep pushes, the guidance backstop) at normal priority.
         # Re-add if a future Xcode fixes the capability mapping.
+    # The same project attributes Xcode's "+ Capability" button writes.
+    # Automatic signing's capability mapper reads THESE, not just the
+    # entitlements file — without them it can fail with "the capability
+    # associated with PUSH_NOTIFICATIONS could not be determined".
+    attributes:
+      SystemCapabilities:
+        com.apple.Push:
+          enabled: 1
+        com.apple.HealthKit:
+          enabled: 1
+        com.apple.BackgroundModes:
+          enabled: 1
     dependencies:
       - package: firebase-ios-sdk
         product: FirebaseAuth
