@@ -83,7 +83,11 @@ struct ConversationView: View {
             }
 
             // Today's session, one tap away — the plan reaching back out.
-            if model.signedIn, model.state == .idle, let upNext = model.upNextLabel {
+            // (Hidden during the brief tour: the state dips to idle for an
+            // instant between chapters, and the pill must not blink in.)
+            if model.signedIn, model.state == .idle, model.briefTourCard == nil,
+                let upNext = model.upNextLabel
+            {
                 Button {
                     model.startUpNext()
                 } label: {
@@ -110,12 +114,14 @@ struct ConversationView: View {
             EclipseOrb(
                 state: model.state,
                 level: model.micBars.last ?? 0,
-                size: model.briefCard == nil && model.planCard == nil ? 320 : 150
+                size: orbIsBig ? 320 : 150
             )
 
             Spacer(minLength: 16)
 
-            if let card = model.briefCard {
+            if model.briefTourCard != nil {
+                tourSlide
+            } else if let card = model.briefCard {
                 BriefCardView(card: card) {
                     model.dismissBrief()
                 }
@@ -139,6 +145,40 @@ struct ConversationView: View {
         }
         .frame(maxWidth: .infinity)
         .multilineTextAlignment(.center)
+    }
+
+    /// The orb holds center stage until a card needs the room — the brief's
+    /// resting card, a plan card, or a visual chapter of the spoken tour.
+    private var orbIsBig: Bool {
+        model.briefCard == nil && model.planCard == nil && !tourVisualActive
+    }
+
+    private var tourVisualActive: Bool {
+        guard let chapter = model.briefChapter else { return false }
+        return chapter.kind.hasVisual
+    }
+
+    /// The tour's stage slot: each chapter's card slides in from the right
+    /// while the previous slides out to the left, in step with the speech.
+    /// Orb-only chapters (intro/outro) leave the slot empty, so whatever
+    /// was up slides away and the orb takes back the room.
+    private var tourSlide: some View {
+        ZStack {
+            if let chapter = model.briefChapter, let tour = model.briefTourCard,
+                chapter.kind.hasVisual
+            {
+                BriefChapterCardView(chapter: chapter, card: tour)
+                    .id(model.briefChapterIndex)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        )
+                    )
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: 400)
     }
 
     /// The words of the current exchange only — no scrollback, no bubbles.
@@ -209,17 +249,24 @@ struct ConversationView: View {
                 Text("Scheduling sessions…")
                     .foregroundStyle(OttoTheme.textSecondary)
             case .idle:
-                switch model.state {
-                case .idle:
-                    Color.clear
-                case .listening:
-                    Text("Listening")
-                        .foregroundStyle(OttoTheme.textSecondary)
-                case .thinking:
-                    ThinkingIndicator()
-                case .speaking:
-                    Text("Speak to interrupt")
+                if model.briefTourCard != nil {
+                    // Steady through the whole tour — the voice state dips
+                    // to idle between chapters and must not flicker this.
+                    Text("Your morning brief")
                         .foregroundStyle(OttoTheme.textTertiary)
+                } else {
+                    switch model.state {
+                    case .idle:
+                        Color.clear
+                    case .listening:
+                        Text("Listening")
+                            .foregroundStyle(OttoTheme.textSecondary)
+                    case .thinking:
+                        ThinkingIndicator()
+                    case .speaking:
+                        Text("Speak to interrupt")
+                            .foregroundStyle(OttoTheme.textTertiary)
+                    }
                 }
             }
         }
@@ -374,13 +421,19 @@ struct ConversationView: View {
     // MARK: - The mic
 
     private var controlBar: some View {
-        MicButton(systemName: model.state == .idle ? "mic.fill" : "stop.fill") {
+        MicButton(systemName: micIsIdle ? "mic.fill" : "stop.fill") {
             Haptics.press()
             model.toggleVoice()
         }
         .disabled(!model.signedIn)
-        .accessibilityLabel(model.state == .idle ? "Start voice conversation" : "Stop")
+        .accessibilityLabel(micIsIdle ? "Start voice conversation" : "Stop")
         .padding(.top, 2)
         .padding(.bottom, 66)
+    }
+
+    /// Steady stop glyph through the tour — the state's between-chapter
+    /// idle dips must not flash the mic icon.
+    private var micIsIdle: Bool {
+        model.state == .idle && model.briefTourCard == nil
     }
 }

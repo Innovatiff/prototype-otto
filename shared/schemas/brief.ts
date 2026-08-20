@@ -51,10 +51,27 @@ export const BriefCard = z.object({
 });
 export type BriefCard = z.infer<typeof BriefCard>;
 
+/**
+ * One chapter of the spoken brief. The client plays chapters in order,
+ * sliding the matching visual (weather tile, calendar list, reminders) in
+ * while each one is being spoken — the words and the screen move together.
+ */
+export const BriefChapterKind = z.enum(["intro", "weather", "calendar", "reminders", "outro"]);
+export type BriefChapterKind = z.infer<typeof BriefChapterKind>;
+
+export const BriefChapter = z.object({
+  kind: BriefChapterKind,
+  /** This chapter's sentences, spoken style. */
+  spoken: z.string().min(1).max(600),
+});
+export type BriefChapter = z.infer<typeof BriefChapter>;
+
 export const BriefResponse = z.object({
-  /** The text Otto says. Capped at ~150 words by the synthesis prompt. */
+  /** The full text Otto says — the chapters joined, for storage and search. */
   spoken: z.string().min(1),
   card: BriefCard,
+  /** The same speech, segmented for the synced visual tour. */
+  chapters: z.array(BriefChapter).max(8).optional(),
 });
 export type BriefResponse = z.infer<typeof BriefResponse>;
 

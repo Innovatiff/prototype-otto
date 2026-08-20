@@ -8,7 +8,12 @@
  * stored so tomorrow's brief can reference today's.
  */
 import { Router, type Request, type Response } from "express";
-import { BriefRequest, type BriefCard, type BriefRecord } from "@otto/shared";
+import {
+  BriefRequest,
+  type BriefCard,
+  type BriefRecord,
+  type BriefResponse,
+} from "@otto/shared";
 
 import { parseOrThrow } from "../errors.js";
 import { logInfo } from "../log.js";
@@ -56,7 +61,12 @@ briefRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     lists: context.lists,
   };
 
-  res.json({ spoken: synthesis.spoken, card });
+  const payload: BriefResponse = {
+    spoken: synthesis.spoken,
+    card,
+    chapters: synthesis.chapters,
+  };
+  res.json(payload);
 
   // Continuity happens off the response path: summarize on the cheap tier
   // and store for tomorrow. The user never waits on it.

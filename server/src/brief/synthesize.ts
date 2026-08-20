@@ -5,6 +5,9 @@
  * weather advice derived in code; the model's job is judgment and phrasing,
  * never computation.
  */
+import { BriefChapter } from "@otto/shared";
+import { z } from "zod";
+
 import { getAnthropicClient } from "../llm/anthropic.js";
 import { TIER_MODELS } from "../router/selectModel.js";
 import { wallTime } from "../util/time.js";
@@ -13,30 +16,81 @@ import type { BriefContext } from "./gather.js";
 export const BRIEF_MODEL = TIER_MODELS.sonnet;
 export const SUMMARY_MODEL = "claude-haiku-4-5";
 
-/** Verbatim from the spec. */
-export const BRIEF_SYSTEM_PROMPT = `You are writing Otto's morning brief. You are speaking it aloud.
+/** The spec's voice, restructured into chapters the screen can follow. */
+export const BRIEF_SYSTEM_PROMPT = `You are writing Otto's morning brief. You are speaking it aloud, and the screen shows each chapter's visual while you speak it — so emit the brief as CHAPTERS via emit_brief, in this order:
 
-STRUCTURE — in this order, skipping anything that doesn't apply:
-1. Weather, as ADVICE not data. "Nine degrees and raining, and it's not
-   clearing before noon — take the car." Never "the high today is 12."
-2. Any schedule conflict, stated as a problem with a proposed fix.
-   "That won't work. I'd push the dentist — want me to draft the reschedule?"
-3. The two or three things that genuinely need them today. Not everything
-   on the calendar — the things that matter.
-4. Anything carried over: a goal they mentioned, a plan they're behind on,
-   a task that's been sitting.
-5. Close by handing control back. "That's the day. Where do you want to
-   start?"
+1. "weather" — ALWAYS present. Weather as ADVICE not data: "Nine degrees
+   and raining, and it's not clearing before noon — take the car." Never
+   "the high today is 12." If weather is unavailable, one calm line
+   saying so.
+2. "calendar" — ALWAYS present. Any conflict first, stated as a problem
+   with a proposed fix ("That won't work. I'd push the dentist — want me
+   to draft the reschedule?"), then the two or three commitments that
+   genuinely need them. If the calendar is empty, SAY it's empty, kindly:
+   "Calendar's clear — the day is yours."
+3. "reminders" — ALWAYS present. What's due today, plus list counts only
+   ("nineteen items on the Walmart list" — never the items). If nothing
+   is due, say so in one line.
+4. "outro" — optional. Anything carried over (a goal, a plan they're
+   behind on), then close by handing control back: "That's the day.
+   Where do you want to start?"
+
+An "intro" chapter before weather is allowed but rarely needed — no
+preamble; start with the first real thing.
 
 RULES
-- Under 150 words spoken. This is the one place the 40-word limit is lifted.
+- Under 150 words TOTAL across all chapters. This is the one place the
+  40-word limit is lifted.
+- Each chapter is 1–3 spoken sentences. Plain speech — no headers, no
+  bullet points, no formatting.
 - Have a view. "I'd push the dentist" — not "you have a conflict."
 - Every problem you raise comes with a proposed next step.
-- Reference something from a previous day when you can. Continuity is what
-  separates an assistant from a notification.
-- Never read a full list aloud. Counts only: "nineteen items on your
-  Walmart list" not the items.
-- No preamble. Start with the first real thing.`;
+- Reference something from a previous day when you can. Continuity is
+  what separates an assistant from a notification.`;
+
+/** The forced tool: chapters in, nothing else out. */
+export const BRIEF_TOOL = {
+  name: "emit_brief",
+  description: "Emit the morning brief as ordered spoken chapters.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      chapters: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            kind: {
+              type: "string",
+              enum: ["intro", "weather", "calendar", "reminders", "outro"],
+            },
+            spoken: { type: "string", description: "This chapter's sentences, spoken style." },
+          },
+          required: ["kind", "spoken"],
+        },
+      },
+    },
+    required: ["chapters"],
+  },
+};
+
+const ChaptersPayload = z.object({
+  chapters: z.array(BriefChapter).min(1).max(8),
+});
+
+/** Tool input → validated chapters, or null. Exported for tests. */
+export function parseChapters(input: unknown): BriefChapter[] | null {
+  const parsed = ChaptersPayload.safeParse(input);
+  return parsed.success ? parsed.data.chapters : null;
+}
+
+/** The chapters as one flowing text — storage, summaries, legacy clients. */
+export function joinChapters(chapters: readonly BriefChapter[]): string {
+  return chapters
+    .map((chapter) => chapter.spoken.trim())
+    .filter((spoken) => spoken.length > 0)
+    .join(" ");
+}
 
 const SUMMARY_PROMPT =
   "Summarize this morning brief in at most 60 words of plain prose for " +
@@ -113,6 +167,8 @@ export function serializeContext(context: BriefContext): string {
 
 export interface SynthesizedBrief {
   spoken: string;
+  /** Ordered chapters — what the client plays, sliding visuals per chapter. */
+  chapters: BriefChapter[];
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -137,25 +193,40 @@ function usageOf(response: {
   };
 }
 
-/** One sonnet call; plain text out. */
+/** One sonnet call; the forced emit_brief tool yields ordered chapters. */
 export async function synthesizeBrief(
   context: BriefContext,
   userId: string,
 ): Promise<SynthesizedBrief> {
   const response = await getAnthropicClient().messages.create({
     model: BRIEF_MODEL,
-    max_tokens: 400,
+    max_tokens: 600,
     system: BRIEF_SYSTEM_PROMPT,
     messages: [{ role: "user", content: serializeContext(context) }],
+    tools: [BRIEF_TOOL],
+    tool_choice: { type: "tool", name: "emit_brief" },
     thinking: { type: "disabled" },
     metadata: { user_id: userId },
   });
-  const spoken = response.content
+
+  const toolBlock = response.content.find((block) => block.type === "tool_use");
+  const chapters = toolBlock !== undefined ? parseChapters(toolBlock.input) : null;
+  if (chapters !== null) {
+    return { spoken: joinChapters(chapters), chapters, usage: usageOf(response) };
+  }
+
+  // The tool is forced, so this is the unhappy path — but if the model
+  // slipped and answered in prose, the brief still speaks as one chapter.
+  const text = response.content
     .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("")
     .trim();
-  return { spoken, usage: usageOf(response) };
+  if (text.length === 0) {
+    throw new Error("brief synthesis returned neither chapters nor text");
+  }
+  const fallback: BriefChapter[] = [{ kind: "intro", spoken: text }];
+  return { spoken: text, chapters: fallback, usage: usageOf(response) };
 }
 
 /** The 60-word continuity summary, on the cheap tier. */

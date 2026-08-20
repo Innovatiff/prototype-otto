@@ -5,7 +5,13 @@ import type { CurrentWeather, Task } from "@otto/shared";
 
 import type { BriefContext } from "../src/brief/gather.js";
 import { dueToday, fireInstant, listCounts, wallDate } from "../src/brief/gather.js";
-import { BRIEF_SYSTEM_PROMPT, serializeContext } from "../src/brief/synthesize.js";
+import {
+  BRIEF_SYSTEM_PROMPT,
+  BRIEF_TOOL,
+  joinChapters,
+  parseChapters,
+  serializeContext,
+} from "../src/brief/synthesize.js";
 
 const TS = "2026-08-18T12:00:00.000Z";
 
@@ -155,10 +161,49 @@ test("serialized context is compact, timezone-correct, and carries the digested 
   assert.ok(!text.includes("onions"));
 });
 
-test("the brief prompt carries the spec's load-bearing rules verbatim", () => {
+test("the brief prompt carries the spec's load-bearing rules", () => {
   assert.ok(BRIEF_SYSTEM_PROMPT.includes("You are writing Otto's morning brief."));
-  assert.ok(BRIEF_SYSTEM_PROMPT.includes("Weather, as ADVICE not data."));
-  assert.ok(BRIEF_SYSTEM_PROMPT.includes("Under 150 words spoken."));
-  assert.ok(BRIEF_SYSTEM_PROMPT.includes("Never read a full list aloud."));
-  assert.ok(BRIEF_SYSTEM_PROMPT.includes("No preamble. Start with the first real thing."));
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes("Weather as ADVICE not data"));
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes("Under 150 words TOTAL"));
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes("never the items"));
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes("start with the first real thing"));
+});
+
+// ── Chapters: the contract the synced visual tour rides on ──────────
+
+test("the chapter contract: three visuals always present, empties said kindly", () => {
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes('"weather" — ALWAYS present'));
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes('"calendar" — ALWAYS present'));
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes('"reminders" — ALWAYS present'));
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes("Calendar's clear"));
+  assert.equal(BRIEF_TOOL.name, "emit_brief");
+});
+
+test("parseChapters accepts well-formed tool input and rejects junk", () => {
+  const good = parseChapters({
+    chapters: [
+      { kind: "weather", spoken: "Nine degrees and raining — take the car." },
+      { kind: "calendar", spoken: "Calendar's clear — the day is yours." },
+      { kind: "reminders", spoken: "Nothing due today." },
+    ],
+  });
+  assert.ok(good !== null);
+  assert.equal(good.length, 3);
+  assert.equal(good[0]?.kind, "weather");
+
+  assert.equal(parseChapters(null), null);
+  assert.equal(parseChapters({}), null);
+  assert.equal(parseChapters({ chapters: [] }), null);
+  assert.equal(parseChapters({ chapters: [{ kind: "banana", spoken: "hi" }] }), null);
+  assert.equal(parseChapters({ chapters: [{ kind: "weather", spoken: "" }] }), null);
+  assert.equal(parseChapters({ chapters: [{ kind: "weather" }] }), null);
+});
+
+test("joinChapters flows the chapters into one clean spoken text", () => {
+  const joined = joinChapters([
+    { kind: "weather", spoken: "  Nine degrees and raining. " },
+    { kind: "calendar", spoken: "   " },
+    { kind: "reminders", spoken: "Nothing due today." },
+  ]);
+  assert.equal(joined, "Nine degrees and raining. Nothing due today.");
 });

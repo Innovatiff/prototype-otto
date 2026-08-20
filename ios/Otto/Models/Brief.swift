@@ -66,6 +66,44 @@ struct BriefCard: Codable, Hashable, Sendable {
     }
 }
 
+struct BriefChapter: Codable, Hashable, Sendable {
+    var kind: BriefChapterKind
+    var spoken: String
+
+    init(
+        kind: BriefChapterKind,
+        spoken: String
+    ) {
+        self.kind = kind
+        self.spoken = spoken
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case spoken
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.kind = try container.decode(BriefChapterKind.self, forKey: .kind)
+        self.spoken = try container.decode(String.self, forKey: .spoken)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.kind, forKey: .kind)
+        try container.encode(self.spoken, forKey: .spoken)
+    }
+}
+
+enum BriefChapterKind: String, Codable, Hashable, Sendable, CaseIterable {
+    case intro
+    case weather
+    case calendar
+    case reminders
+    case outro
+}
+
 struct BriefDueTask: Codable, Hashable, Sendable {
     var taskId: String
     var title: String
@@ -243,29 +281,35 @@ struct BriefRequest: Codable, Hashable, Sendable {
 struct BriefResponse: Codable, Hashable, Sendable {
     var spoken: String
     var card: BriefCard
+    var chapters: [BriefChapter]?
 
     init(
         spoken: String,
-        card: BriefCard
+        card: BriefCard,
+        chapters: [BriefChapter]? = nil
     ) {
         self.spoken = spoken
         self.card = card
+        self.chapters = chapters
     }
 
     private enum CodingKeys: String, CodingKey {
         case spoken
         case card
+        case chapters
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.spoken = try container.decode(String.self, forKey: .spoken)
         self.card = try container.decode(BriefCard.self, forKey: .card)
+        self.chapters = try container.decodeIfPresent([BriefChapter].self, forKey: .chapters)
     }
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(self.spoken, forKey: .spoken)
         try container.encode(self.card, forKey: .card)
+        try container.encodeIfPresent(self.chapters, forKey: .chapters)
     }
 }

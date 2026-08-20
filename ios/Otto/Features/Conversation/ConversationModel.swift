@@ -226,9 +226,16 @@ final class ConversationModel {
 
     // MARK: - The morning brief
 
-    /// The structured half of the brief, rendered while Otto speaks.
+    /// The structured half of the brief — the resting card after the tour.
     private(set) var briefCard: BriefCard?
     private(set) var briefRunning = false
+    /// The chapter currently on stage during the spoken tour, nil outside it.
+    private(set) var briefChapter: BriefChapter?
+    /// Increments per chapter — gives each slide its own transition identity.
+    private(set) var briefChapterIndex = 0
+    /// The card data the chapter visuals draw from while the tour plays.
+    private(set) var briefTourCard: BriefCard?
+    private var briefTourToken = UUID()
     let calendarService: CalendarService
 
     private static let briefEnabledKey = "otto.brief.enabled"
@@ -467,11 +474,19 @@ final class ConversationModel {
     /// everything (including speech from a typed turn).
     func toggleVoice() {
         if state == .idle {
+            // The stop glyph shows through the whole brief tour, and the
+            // state dips to idle between chapters — a tap in that instant
+            // means "stop the brief", never "start talking".
+            if briefTourCard != nil {
+                cancelBriefTour()
+                return
+            }
             Task {
                 guard await self.prepareForTurn() else { return }
                 await self.voiceLoop.startConversation()
             }
         } else {
+            cancelBriefTour()
             Task { await self.voiceLoop.stopConversation() }
         }
     }
@@ -541,6 +556,7 @@ final class ConversationModel {
     /// Signed in + a parseable server URL pushed into the loop. Failures land
     /// in the transcript as notices instead of silently doing nothing.
     private func prepareForTurn() async -> Bool {
+        cancelBriefTour()
         refreshAccount()
         guard signedIn else {
             appendNotice("Sign in first — open settings from the top right.")
@@ -1066,15 +1082,56 @@ final class ConversationModel {
                     timezone: TimeZone.current.identifier
                 )
             )
-            withAnimation(.snappy) { briefCard = response.card }
-            await voiceLoop.announce(response.spoken)
+            if let chapters = response.chapters, !chapters.isEmpty {
+                await playBriefTour(chapters: chapters, card: response.card)
+            } else {
+                // Older server shape: the full card up for the whole read.
+                withAnimation(.snappy) { briefCard = response.card }
+                await voiceLoop.announce(response.spoken)
+            }
         } catch {
             appendNotice("Brief failed: \(error.localizedDescription)")
             await voiceLoop.announce("I couldn't put the brief together. Try again in a minute.")
         }
     }
 
+    /// The synced tour: each chapter's visual slides in, its sentences play,
+    /// the next slides over it. A mic tap or typed turn cancels between
+    /// chapters; the full-day card is what rests on stage at the end.
+    private func playBriefTour(chapters: [BriefChapter], card: BriefCard) async {
+        let token = UUID()
+        briefTourToken = token
+        briefTourCard = card
+        for (index, chapter) in chapters.enumerated() {
+            guard briefTourToken == token else { return }
+            withAnimation(.spring(duration: 0.55, bounce: 0.18)) {
+                briefChapter = chapter
+                briefChapterIndex = index
+            }
+            Haptics.tick()
+            await voiceLoop.announce(chapter.spoken)
+        }
+        guard briefTourToken == token else { return }
+        withAnimation(.spring(duration: 0.5, bounce: 0.12)) {
+            briefChapter = nil
+            briefTourCard = nil
+            briefCard = card
+        }
+    }
+
+    /// Any new turn or stop tears the tour down — the next chapter's
+    /// announce would fight whatever the user just started.
+    private func cancelBriefTour() {
+        briefTourToken = UUID()
+        guard briefChapter != nil || briefTourCard != nil else { return }
+        withAnimation(.snappy) {
+            briefChapter = nil
+            briefTourCard = nil
+        }
+    }
+
     func dismissBrief() {
+        cancelBriefTour()
         withAnimation(.snappy) { briefCard = nil }
     }
 
