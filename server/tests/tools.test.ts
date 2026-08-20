@@ -22,6 +22,7 @@ function properties(name: string): Record<string, SchemaProperty> {
 test("exactly the specified tools, snake_case, unique", () => {
   const names = OTTO_TOOLS.map((t) => t.name);
   assert.deepEqual(names, [
+    "show_visual",
     "create_task",
     "query_tasks",
     "update_task_items",
@@ -95,6 +96,18 @@ test("the spec's product rules are stated where the model reads them", () => {
     "productivity",
     "learning",
   ]);
+});
+
+test("show_visual is the stage: four kinds, speak-the-judgment contract", () => {
+  assert.deepEqual(properties("show_visual").kind?.enum, [
+    "weather",
+    "calendar",
+    "reminders",
+    "plans",
+  ]);
+  assert.match(tool("show_visual").description ?? "", /FIRST/);
+  assert.match(tool("show_visual").description ?? "", /never read what's on screen aloud/i);
+  assert.match(tool("show_visual").description ?? "", /one call per turn/i);
 });
 
 test("nothing dynamic can leak into the cached prefix", () => {

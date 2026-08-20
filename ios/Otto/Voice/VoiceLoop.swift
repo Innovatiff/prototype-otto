@@ -83,6 +83,10 @@ enum ConversationEvent: Sendable {
     case planReady(Plan)
     /// Generation failed server-side; the UI clears its progress state.
     case planFailed
+    /// A stage visual: the illustration to show while Otto speaks —
+    /// weather, calendar, reminders, plans, a build in progress, an armed
+    /// automation. Speaks-and-shows.
+    case stageVisual(StageVisual)
     /// The server's effective conversation session for the last turn — the
     /// model persists it so a relaunch resumes the same conversation.
     case session(String)
@@ -730,6 +734,10 @@ actor VoiceLoop {
                     }
                 case .planFailed:
                     emit(.planFailed)
+                case .stage:
+                    if let visual = event.data?.decoded(as: StageVisual.self) {
+                        emit(.stageVisual(visual))
+                    }
                 }
             }
             clauseBuffer.finish()

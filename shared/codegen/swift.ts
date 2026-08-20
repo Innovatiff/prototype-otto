@@ -53,6 +53,7 @@ import * as taskSchemas from "../schemas/task.js";
 import * as memorySchemas from "../schemas/memory.js";
 import * as planSchemas from "../schemas/plan.js";
 import * as sessionSchemas from "../schemas/session.js";
+import * as stageSchemas from "../schemas/stage.js";
 import * as turnSchemas from "../schemas/turn.js";
 import * as userSchemas from "../schemas/user.js";
 import * as weatherSchemas from "../schemas/weather.js";
@@ -77,6 +78,7 @@ const MODULES: readonly ModuleSpec[] = [
   { swiftFile: "Memory", source: "shared/schemas/memory.ts", schemas: memorySchemas },
   { swiftFile: "Plan", source: "shared/schemas/plan.ts", schemas: planSchemas },
   { swiftFile: "Session", source: "shared/schemas/session.ts", schemas: sessionSchemas },
+  { swiftFile: "Stage", source: "shared/schemas/stage.ts", schemas: stageSchemas },
   { swiftFile: "Turn", source: "shared/schemas/turn.ts", schemas: turnSchemas },
   { swiftFile: "User", source: "shared/schemas/user.ts", schemas: userSchemas },
   { swiftFile: "Weather", source: "shared/schemas/weather.ts", schemas: weatherSchemas },

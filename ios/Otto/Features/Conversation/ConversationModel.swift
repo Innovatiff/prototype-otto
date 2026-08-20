@@ -249,6 +249,33 @@ final class ConversationModel {
     /// The card data the chapter visuals draw from while the tour plays.
     private(set) var briefTourCard: BriefCard?
     private var briefTourToken = UUID()
+
+    // MARK: - The stage (speaks and shows)
+
+    /// The illustration for whatever Otto is answering right now — set by
+    /// the server's stage events mid-turn, cleared when the user speaks
+    /// again. The brief tour outranks it while running.
+    private(set) var stageVisual: StageVisual?
+    /// Increments per visual — gives each slide its own transition identity.
+    private(set) var stageVisualID = 0
+    /// Today's calendar, captured for the calendar visual — EventKit is the
+    /// truth on-device; the server's calendar stage event carries no data.
+    private(set) var todaysEvents: [CalendarEvent] = []
+    private(set) var todaysConflicts: [Conflict] = []
+
+    private func showStageVisual(_ visual: StageVisual) {
+        withAnimation(.spring(duration: 0.55, bounce: 0.18)) {
+            stageVisual = visual
+            stageVisualID += 1
+        }
+        Haptics.tick()
+    }
+
+    private func clearStageVisual() {
+        guard stageVisual != nil else { return }
+        withAnimation(.snappy) { stageVisual = nil }
+    }
+
     let calendarService: CalendarService
 
     private static let briefEnabledKey = "otto.brief.enabled"
@@ -570,6 +597,7 @@ final class ConversationModel {
     /// in the transcript as notices instead of silently doing nothing.
     private func prepareForTurn() async -> Bool {
         cancelBriefTour()
+        clearStageVisual()
         refreshAccount()
         guard signedIn else {
             appendNotice("Sign in first — open settings from the top right.")
@@ -615,8 +643,12 @@ final class ConversationModel {
                 micBars = Self.silentBars
             }
         case .userPartial(let text):
+            // The user speaking again is the topic moving on — the stage
+            // clears so the next answer's visual has a clean entrance.
+            clearStageVisual()
             upsertUserRow(text, isFinal: false)
         case .userFinal(let text):
+            clearStageVisual()
             upsertUserRow(text, isFinal: true)
         case .ottoToken(let token):
             appendOttoToken(token)
@@ -643,6 +675,8 @@ final class ConversationModel {
             Task { await self.handleCapturedReply(text) }
         case .briefRequested:
             Task { await self.runBrief() }
+        case .stageVisual(let visual):
+            showStageVisual(visual)
         case .guidanceUtterance(let text):
             Task { await self.guidance.handleUtterance(text) }
         case .guidanceStartRequested:
@@ -653,6 +687,7 @@ final class ConversationModel {
             }
         case .planReady(let plan):
             planPhase = .idle
+            clearStageVisual()
             Haptics.success()
             withAnimation(.snappy) { planCard = plan }
             plansModel.apply(plan)
@@ -664,6 +699,8 @@ final class ConversationModel {
             Task { await self.refreshUpNext() }
         case .planFailed:
             planPhase = .idle
+            // The building visual must not outlive the build.
+            clearStageVisual()
         case .task(let task):
             Haptics.tap()
             tasksModel.apply(task)
@@ -1163,6 +1200,13 @@ final class ConversationModel {
                 ?? dayStart.addingTimeInterval(2 * 86_400)
             let events = await self.calendarService.eventsIfAuthorized(from: dayStart, to: end)
             await self.voiceLoop.setCalendarContext(events)
+            // Today's slice feeds the calendar stage visual.
+            let todayEnd =
+                Foundation.Calendar.current.date(byAdding: .day, value: 1, to: dayStart)
+                ?? dayStart.addingTimeInterval(86_400)
+            let todays = events.filter { $0.startsAt < todayEnd && $0.endsAt > dayStart }
+            self.todaysEvents = todays
+            self.todaysConflicts = CalendarService.conflicts(in: todays)
         }
     }
 

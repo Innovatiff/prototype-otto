@@ -121,6 +121,25 @@ struct ConversationView: View {
 
             if model.briefTourCard != nil {
                 tourSlide
+            } else if let visual = model.stageVisual {
+                // Speaks and shows: the illustration for what Otto is
+                // answering right now, slid in mid-turn by the server.
+                StageVisualView(
+                    visual: visual,
+                    todaysEvents: model.todaysEvents,
+                    todaysConflicts: model.todaysConflicts
+                ) {
+                    model.startTourPlanSession()
+                }
+                .id(model.stageVisualID)
+                .padding(.horizontal, 16)
+                .frame(maxHeight: 400)
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    )
+                )
             } else if let card = model.briefCard {
                 BriefCardView(card: card) {
                     model.dismissBrief()
@@ -148,14 +167,24 @@ struct ConversationView: View {
     }
 
     /// The orb holds center stage until an illustration needs the room —
-    /// the brief's resting card, a plan card, or a visual tour chapter.
+    /// the brief's resting card, a plan card, a tour chapter, or a data
+    /// stage visual. Building and armed-automation moments are compact, so
+    /// the orb stays big behind them.
     private var orbIsBig: Bool {
         model.briefCard == nil && model.planCard == nil && !tourVisualActive
+            && !stageDataVisualActive
     }
 
     private var tourVisualActive: Bool {
         guard let chapter = model.briefChapter else { return false }
         return chapter.kind.hasVisual
+    }
+
+    private var stageDataVisualActive: Bool {
+        switch model.stageVisual?.kind {
+        case .weather, .calendar, .reminders, .plans: return true
+        case .building, .automation, nil: return false
+        }
     }
 
     /// The tour's stage slot: each chapter's illustration slides in from

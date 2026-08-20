@@ -1,14 +1,17 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { ListItem } from "@otto/shared";
+import type { ListItem, TurnEvent } from "@otto/shared";
+import { StageVisual, TurnEventType } from "@otto/shared";
 
 import {
   applyItemUpdates,
   CreateTaskInput,
+  executeToolUse,
   matchItem,
   normalizeItemText,
   UpdateTaskItemsInput,
+  type ToolContext,
 } from "../src/tools/execute.js";
 
 const NOW = new Date("2026-07-31T12:00:00.000Z");
@@ -99,4 +102,64 @@ test("bad tool inputs are rejected, not coerced", () => {
   assert.ok(!CreateTaskInput.safeParse({ intent: "reminder" }).success);
   assert.ok(!CreateTaskInput.safeParse({ intent: "reminder", title: "x", triggerAt: "tomorrow" }).success);
   assert.ok(!UpdateTaskItemsInput.safeParse({ check: ["onions"] }).success);
+});
+
+// ── The stage (show_visual) ─────────────────────────────────────────
+
+function stageContext(): { ctx: ToolContext; events: TurnEvent[] } {
+  const events: TurnEvent[] = [];
+  return {
+    events,
+    ctx: {
+      uid: "u1",
+      turnId: "t1",
+      now: NOW,
+      timezone: "America/Toronto",
+      emit: (event: TurnEvent) => {
+        events.push(event);
+      },
+    },
+  };
+}
+
+test("the stage event type exists on the turn stream contract", () => {
+  assert.ok(TurnEventType.options.includes("stage"));
+});
+
+test("show_visual calendar emits a kind-only stage event (device owns the data)", async () => {
+  const { ctx, events } = stageContext();
+  const result = await executeToolUse("show_visual", { kind: "calendar" }, ctx);
+  assert.notEqual(result.isError, true);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.type, "stage");
+  const visual = StageVisual.parse(events[0]?.data);
+  assert.equal(visual.kind, "calendar");
+  assert.equal(visual.weather, undefined);
+  assert.equal(visual.dueTasks, undefined);
+});
+
+test("show_visual rejects unknown kinds as a tool error, emitting nothing", async () => {
+  const { ctx, events } = stageContext();
+  const result = await executeToolUse("show_visual", { kind: "stocks" }, ctx);
+  assert.equal(result.isError, true);
+  assert.equal(events.length, 0);
+});
+
+test("stage visuals parse for every kind the server emits", () => {
+  assert.ok(StageVisual.safeParse({ kind: "building", label: "Building your plan" }).success);
+  assert.ok(
+    StageVisual.safeParse({
+      kind: "automation",
+      label: "Friday check",
+      detail: "Fridays at 3:30 PM",
+    }).success,
+  );
+  assert.ok(
+    StageVisual.safeParse({
+      kind: "reminders",
+      dueTasks: [{ taskId: "t1", title: "Call pharmacy", at: "2026-07-31T15:00:00.000Z" }],
+      lists: [{ taskId: "w1", title: "Walmart", openCount: 3 }],
+    }).success,
+  );
+  assert.ok(!StageVisual.safeParse({ kind: "stocks" }).success);
 });

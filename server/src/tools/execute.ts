@@ -17,6 +17,7 @@ import {
   TaskStatus,
   zId,
   type ListItem,
+  type StageVisual,
   type TurnEvent,
 } from "@otto/shared";
 import { z } from "zod";
@@ -36,6 +37,7 @@ import {
   syncCustomAutomationCount,
   updateAutomationScheduling,
 } from "../automations/store.js";
+import { dueToday, listCounts, loadActiveTasks, loadPlanContext } from "../brief/gather.js";
 import { COLLECTIONS, db } from "../firestore.js";
 import { errorFields, logInfo, logWarning } from "../log.js";
 import { tryEmbed } from "../memory/embed.js";
@@ -49,6 +51,7 @@ import {
   saveNewPlan,
 } from "../plans/store.js";
 import { summaryLine } from "../plans/summarize.js";
+import { cachedCurrentWeather, DEFAULT_LAT, DEFAULT_LON } from "../services/weather/index.js";
 
 // ── Inputs (mirror tools/definitions.ts; the model is validated, not trusted) ──
 
@@ -431,6 +434,8 @@ function proposeCalendarMove(
  * yet; storage and versioning land with the store module.
  */
 async function generatePlanTool(input: PlanConstraints, ctx: ToolContext): Promise<ToolExecution> {
+  // The screen shows the assembly the whole time generation runs.
+  emitStage(ctx, { kind: "building", label: "Building your plan" });
   try {
     const generated = await generatePlan({
       userId: ctx.uid,
@@ -502,6 +507,7 @@ async function adaptPlanTool(
   if (active === null) {
     return failure(`No active ${input.domain} plan to adapt.`);
   }
+  emitStage(ctx, { kind: "building", label: "Reshaping your plan" });
   // What actually happened informs the patch: real loads beat assumed
   // ones, and repeatedly skipped steps are substitution candidates.
   const records = await loadSessionRecords(ctx.uid, active.id, 8).catch(() => []);
@@ -559,6 +565,74 @@ export const ManageAutomationsInput = z.object({
   label: z.string().min(1).max(200).optional(),
 });
 
+export const ShowVisualInput = z.object({
+  kind: z.enum(["weather", "calendar", "reminders", "plans"]),
+});
+
+/** Emits a stage TurnEvent, typed at the seam. */
+function emitStage(ctx: ToolContext, visual: StageVisual): void {
+  ctx.emit({ type: "stage", data: visual });
+}
+
+/**
+ * The stage: puts the matching illustration on screen while the model
+ * answers. Weather/reminders/plans carry server-owned data; calendar sends
+ * kind only — the device renders from its own EventKit events.
+ */
+async function showVisualTool(
+  input: z.infer<typeof ShowVisualInput>,
+  ctx: ToolContext,
+): Promise<ToolExecution> {
+  switch (input.kind) {
+    case "weather": {
+      const weather = await cachedCurrentWeather(DEFAULT_LAT, DEFAULT_LON);
+      emitStage(ctx, { kind: "weather", weather: weather ?? undefined });
+      return {
+        result: JSON.stringify({
+          shown: "weather",
+          weatherAvailable: weather !== null,
+          note: "On screen. Speak the judgment, not the numbers.",
+        }),
+      };
+    }
+    case "calendar": {
+      emitStage(ctx, { kind: "calendar" });
+      return {
+        result: JSON.stringify({
+          shown: "calendar",
+          note: "Today's events are on screen. Speak the judgment, not the list.",
+        }),
+      };
+    }
+    case "reminders": {
+      const tasks = await loadActiveTasks(ctx.uid).catch((): Task[] => []);
+      emitStage(ctx, {
+        kind: "reminders",
+        dueTasks: dueToday(tasks, ctx.now, ctx.timezone).slice(0, 10),
+        lists: listCounts(tasks).slice(0, 10),
+      });
+      return {
+        result: JSON.stringify({
+          shown: "reminders",
+          note: "Due items and list counts are on screen. Don't read them out.",
+        }),
+      };
+    }
+    case "plans": {
+      const planContext = await loadPlanContext(ctx.uid, ctx.now, ctx.timezone);
+      emitStage(ctx, { kind: "plans", planSessions: planContext.planSessions.slice(0, 6) });
+      return {
+        result: JSON.stringify({
+          shown: "plans",
+          hasActivePlans: planContext.hasActivePlans,
+          todaysSessions: planContext.planSessions.length,
+          note: "Today's plan sessions are on screen.",
+        }),
+      };
+    }
+  }
+}
+
 /**
  * Create a voice-defined automation. The model parsed speech into the
  * schedule; everything is re-validated here against the strict subset, and
@@ -568,6 +642,7 @@ async function createAutomationTool(
   input: CustomAutomationInput,
   ctx: ToolContext,
 ): Promise<ToolExecution> {
+  emitStage(ctx, { kind: "building", label: "Setting up the automation" });
   const existing = await loadOwnerAutomations(ctx.uid);
   const customCount = existing.filter((automation) => automation.type === "custom").length;
   const built = buildCustomAutomation(
@@ -582,6 +657,12 @@ async function createAutomationTool(
     return failure(built.error);
   }
   await saveAutomation(built.automation);
+  // The build resolves into the armed automation on screen.
+  emitStage(ctx, {
+    kind: "automation",
+    label: built.automation.label,
+    detail: describeSchedule(built.automation.schedule),
+  });
   // Tier meter (Lite caps at 3; enforcement is Phase 7's). Failure-isolated:
   // a metering hiccup must never fail a created automation.
   let customAutomationCount: number | null = null;
@@ -671,6 +752,12 @@ export async function executeToolUse(
 ): Promise<ToolExecution> {
   try {
     switch (name) {
+      case "show_visual": {
+        const parsed = ShowVisualInput.safeParse(rawInput);
+        return parsed.success
+          ? await showVisualTool(parsed.data, ctx)
+          : failure("Invalid show_visual input: kind must be weather, calendar, reminders, or plans.");
+      }
       case "create_task": {
         const parsed = CreateTaskInput.safeParse(rawInput);
         return parsed.success ? await createTask(parsed.data, ctx) : failure("Invalid create_task input.");

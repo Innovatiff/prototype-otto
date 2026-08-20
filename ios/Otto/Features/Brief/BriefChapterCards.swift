@@ -37,6 +37,131 @@ struct BriefChapterCardView: View {
     }
 }
 
+// MARK: - Conversational stage ("speaks and shows")
+
+/// The illustration for whatever Otto is answering right now — the same
+/// living visuals the brief tour uses, plus the build-in-progress and
+/// armed-automation moments. Calendar renders from the device's own
+/// events; everything else arrives in the visual's payload.
+struct StageVisualView: View {
+    let visual: StageVisual
+    var todaysEvents: [CalendarEvent] = []
+    var todaysConflicts: [Conflict] = []
+    var onStartPlan: (() -> Void)? = nil
+
+    var body: some View {
+        switch visual.kind {
+        case .weather:
+            WeatherChapterView(weather: visual.weather)
+        case .calendar:
+            CalendarChapterCard(events: todaysEvents, conflicts: todaysConflicts)
+        case .reminders:
+            RemindersChapterCard(dueTasks: visual.dueTasks ?? [], lists: visual.lists ?? [])
+        case .plans:
+            PlansChapterCard(sessions: visual.planSessions ?? [], onStart: onStartPlan)
+        case .building:
+            BuildingView(label: visual.label)
+        case .automation:
+            AutomationArmedView(label: visual.label ?? "Automation", detail: visual.detail)
+        }
+    }
+}
+
+/// Something being assembled: two meshed gears turning against each other
+/// while rows build themselves in a loop. On stage while a plan generates
+/// or an automation is being set up.
+struct BuildingView: View {
+    var label: String?
+
+    var body: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(OttoTheme.rose.opacity(0.10))
+                    .frame(width: 96, height: 96)
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(OttoTheme.rose)
+                    .spinSlow(duration: 7)
+                    .offset(x: -10, y: 6)
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 25, weight: .semibold))
+                    .foregroundStyle(OttoTheme.sky)
+                    .spinSlow(duration: 5, reverse: true)
+                    .offset(x: 24, y: -20)
+            }
+            // Rows assembling, forever: each pass builds three, then starts
+            // over — work visibly in progress, never a spinner.
+            PhaseAnimator([0, 1, 2, 3]) { phase in
+                VStack(alignment: .leading, spacing: 8) {
+                    buildBar(width: 170, on: phase >= 1)
+                    buildBar(width: 122, on: phase >= 2)
+                    buildBar(width: 84, on: phase >= 3)
+                }
+                .frame(width: 170, alignment: .leading)
+            } animation: { _ in
+                .spring(duration: 0.5, bounce: 0.25)
+            }
+            if let label {
+                Text(label)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(OttoTheme.textSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .ottoCard()
+    }
+
+    private func buildBar(width: CGFloat, on: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .fill(on ? OttoTheme.control : OttoTheme.control.opacity(0.4))
+            .frame(width: on ? width : 30, height: 10)
+    }
+}
+
+/// A freshly created automation snapping into place: the bolt springs in,
+/// the name and schedule under it, an Armed chip to seal it.
+struct AutomationArmedView: View {
+    let label: String
+    var detail: String?
+    @State private var armed = false
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(OttoTheme.lemon.opacity(0.16))
+                    .frame(width: 84, height: 84)
+                    .scaleEffect(armed ? 1 : 0.4)
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(OttoTheme.lemon)
+                    .scaleEffect(armed ? 1 : 0.2)
+                    .rotationEffect(.degrees(armed ? 0 : -25))
+            }
+            Text(label)
+                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .foregroundStyle(OttoTheme.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+            if let detail {
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(OttoTheme.textSecondary)
+            }
+            ChapterChip(symbol: "checkmark", text: "Armed", tint: OttoTheme.mint)
+                .staggerIn(2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .ottoCard()
+        .onAppear {
+            withAnimation(.spring(duration: 0.6, bounce: 0.45)) { armed = true }
+        }
+    }
+}
+
 // MARK: - Weather
 
 /// Chrome-less: a living condition icon (the sun turns, everything else
@@ -380,15 +505,18 @@ private struct Sway: ViewModifier {
     }
 }
 
-/// A full slow turn, forever — the sun doing sun things.
+/// A full continuous turn — the sun doing sun things, gears doing gear
+/// things (reversed for the meshed partner).
 private struct SpinSlow: ViewModifier {
+    var duration: Double = 22
+    var reverse = false
     @State private var turned = false
 
     func body(content: Content) -> some View {
         content
-            .rotationEffect(.degrees(turned ? 360 : 0))
+            .rotationEffect(.degrees(turned ? (reverse ? -360 : 360) : 0))
             .onAppear {
-                withAnimation(.linear(duration: 22).repeatForever(autoreverses: false)) {
+                withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
                     turned = true
                 }
             }
@@ -399,7 +527,9 @@ extension View {
     fileprivate func staggerIn(_ index: Int) -> some View { modifier(StaggerIn(index: index)) }
     fileprivate func floaty() -> some View { modifier(Floaty()) }
     fileprivate func sway() -> some View { modifier(Sway()) }
-    fileprivate func spinSlow() -> some View { modifier(SpinSlow()) }
+    fileprivate func spinSlow(duration: Double = 22, reverse: Bool = false) -> some View {
+        modifier(SpinSlow(duration: duration, reverse: reverse))
+    }
 }
 
 /// The temperature rolling up from zero on arrival.

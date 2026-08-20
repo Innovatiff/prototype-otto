@@ -122,8 +122,11 @@ export function planSessionsToday(
   return sessions.sort((a, b) => (a.timeOfDay ?? "99").localeCompare(b.timeOfDay ?? "99"));
 }
 
-/** Active plans + today's occurrences; degrades to "no plans" on failure. */
-async function loadPlanContext(
+/**
+ * Active plans + today's occurrences; degrades to "no plans" on failure.
+ * Shared with show_visual (the conversational plans illustration).
+ */
+export async function loadPlanContext(
   uid: string,
   now: Date,
   timezone: string,

@@ -20,6 +20,30 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
   {
+    name: "show_visual",
+    description:
+      "Put an illustration on the user's screen — the stage — so they SEE " +
+      "what you're talking about while you say it. Call this FIRST, before " +
+      "answering, whenever the answer is about: current weather (kind " +
+      "'weather'), today's schedule or free time (kind 'calendar'), " +
+      "reminders, due items, or lists (kind 'reminders'), or their plans " +
+      "and training sessions (kind 'plans'). The screen renders the data; " +
+      "you speak the judgment — never read what's on screen aloud. At most " +
+      "one call per turn, and only when the topic genuinely matches — never " +
+      "for unrelated questions.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["weather", "calendar", "reminders", "plans"],
+          description: "Which illustration fits the answer.",
+        },
+      },
+      required: ["kind"],
+    },
+  },
+  {
     name: "create_task",
     description:
       "Create exactly ONE task. A multi-item errand is ONE list task with " +
