@@ -77,7 +77,7 @@ struct OttoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ConversationView(
+            RootView(
                 model: conversation,
                 settings: settings,
                 memory: memory,
@@ -86,9 +86,9 @@ struct OttoApp: App {
                 calendarSync: calendarSync,
                 automations: automations
             )
-                // Otto's stage is dark-first and monochrome; sheets inherit.
-                .preferredColorScheme(.dark)
-                .tint(.white)
+                // Otto lives in the light: white stage, ink type, real color.
+                .preferredColorScheme(.light)
+                .tint(OttoTheme.ink)
         }
         // The sync half of the automations contract: a (throttled) push of
         // the compressed 48-hour view on every foreground, and a queued

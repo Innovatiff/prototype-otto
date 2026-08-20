@@ -1,29 +1,71 @@
 import SwiftUI
 import UIKit
 
-/// Otto's visual language: pure black stage, monochrome type, dark rounded
-/// surfaces, circular controls. Presentation only — no view logic here.
+/// Otto's visual language — light and alive: warm white stage, ink type,
+/// white cards floating on soft shadows, and a palette of real color used
+/// generously but never loudly. Presentation only — no view logic here.
 enum OttoTheme {
-    /// True black stage.
-    static let background = Color.black
-    /// Cards and fields.
-    static let surface = Color(white: 0.09)
-    /// Raised controls (circular buttons).
-    static let control = Color(white: 0.14)
+    /// Warm near-white stage.
+    static let background = Color(red: 0.976, green: 0.976, blue: 0.968)
+    /// Cards and fields: pure white, lifted by shadow rather than stroke.
+    static let surface = Color.white
+    /// Raised controls (circular buttons) and quiet fills.
+    static let control = Color(red: 0.937, green: 0.937, blue: 0.925)
     /// Hairline strokes on surfaces.
-    static let hairline = Color.white.opacity(0.08)
+    static let hairline = Color.black.opacity(0.06)
 
-    static let textPrimary = Color.white
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.32)
+    /// Ink — the text color and the color of primary actions.
+    static let ink = Color(red: 0.09, green: 0.09, blue: 0.11)
+    static let textPrimary = ink
+    static let textSecondary = ink.opacity(0.52)
+    static let textTertiary = ink.opacity(0.30)
+
+    // ── The palette: real colors, used as soft fills with full-strength
+    // glyphs. Drawn once here so every screen speaks the same language.
+    static let sky = Color(red: 0.42, green: 0.72, blue: 0.96)
+    static let mint = Color(red: 0.36, green: 0.82, blue: 0.66)
+    static let lavender = Color(red: 0.66, green: 0.58, blue: 0.94)
+    static let peach = Color(red: 0.99, green: 0.62, blue: 0.38)
+    static let rose = Color(red: 0.96, green: 0.55, blue: 0.72)
+    static let lemon = Color(red: 0.98, green: 0.80, blue: 0.30)
+
+    /// Cycling accents for lists (plan cards, automations).
+    static let palette: [Color] = [sky, mint, lavender, peach, rose, lemon]
 
     static let cardRadius: CGFloat = 22
     static let fieldRadius: CGFloat = 24
 }
 
-/// The speckled corona around the eclipse: thousands of tiny grains, dense
-/// at the rim and thinning outward, rendered once into an image and cached.
-/// This is what makes the orb read as light, not as a vector circle.
+/// The one card treatment: white, continuous corners, a soft drop that
+/// lifts it off the warm stage.
+struct OttoCard: ViewModifier {
+    var padding: CGFloat = 16
+
+    func body(content: Content) -> some View {
+        content
+            .padding(padding)
+            .background(
+                OttoTheme.surface,
+                in: RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
+                    .stroke(OttoTheme.hairline, lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.06), radius: 16, y: 8)
+    }
+}
+
+extension View {
+    func ottoCard(padding: CGFloat = 16) -> some View {
+        modifier(OttoCard(padding: padding))
+    }
+}
+
+/// The speckled corona around the orb: thousands of tiny grains, dense at
+/// the rim and thinning outward, rendered once into an image and cached.
+/// Grains render WHITE and are tinted at display time (colorMultiply), so
+/// the same cached fields serve any palette.
 @MainActor
 enum OrbGrain {
     /// Two independent grain fields; crossfading between them makes the
@@ -63,9 +105,10 @@ enum OrbGrain {
     }
 }
 
-/// The eclipse — Otto's presence. A black disc inside a grainy corona:
-/// breathing when idle, burning with real mic energy while listening,
-/// slowly turning while thinking, pulsing while speaking.
+/// The orb — Otto's presence, now a small sun on a light stage. A colored
+/// gradient sphere inside a tinted grain corona: breathing when idle,
+/// burning with real mic energy while listening, pulsing while speaking.
+/// (Type name kept from the dark era; every call site compiles unchanged.)
 struct EclipseOrb: View {
     var state: VoiceLoopState
     /// Latest normalized mic level (0…1); drives the corona while the mic is hot.
@@ -97,11 +140,11 @@ struct EclipseOrb: View {
 
     var body: some View {
         ZStack {
-            // Soft under-glow so the grain sits in light, not on flat black.
+            // Soft colored under-glow so the sphere sits in light.
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [.white.opacity(0.22 * energy), .clear],
+                        colors: [OttoTheme.sky.opacity(0.30 * energy), .clear],
                         center: .center,
                         startRadius: discSize * 0.42,
                         endRadius: size * 0.52
@@ -110,33 +153,55 @@ struct EclipseOrb: View {
                 .frame(width: size, height: size)
 
             // The corona: a blurred under-halo, then two grain fields
-            // crossfading and micro-scaling out of phase — grains twinkle
-            // and drift, but nothing rotates.
+            // crossfading and micro-scaling out of phase — tinted sky and
+            // lavender so the twinkle reads as color, not noise.
             Image(uiImage: OrbGrain.fieldA)
                 .resizable()
                 .frame(width: size, height: size)
+                .colorMultiply(OttoTheme.sky)
                 .opacity(0.5 * energy)
                 .blur(radius: 5)
             Image(uiImage: OrbGrain.fieldA)
                 .resizable()
                 .frame(width: size, height: size)
+                .colorMultiply(OttoTheme.sky)
                 .opacity(energy * (shimmer ? 1.0 : 0.45))
                 .scaleEffect(shimmer ? 1.012 : 1.0)
             Image(uiImage: OrbGrain.fieldB)
                 .resizable()
                 .frame(width: size, height: size)
+                .colorMultiply(OttoTheme.lavender)
                 .opacity(energy * (shimmer ? 0.45 : 1.0))
                 .scaleEffect(shimmer ? 1.0 : 1.012)
 
-            // The black disc with the thinnest bright edge.
+            // The sphere: a diagonal wash of the palette with a top-left
+            // highlight that gives it a body, and the thinnest bright edge.
             Circle()
-                .fill(Color.black)
+                .fill(
+                    LinearGradient(
+                        colors: [OttoTheme.mint, OttoTheme.sky, OttoTheme.lavender],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [.white.opacity(0.55), .clear],
+                                center: UnitPoint(x: 0.32, y: 0.28),
+                                startRadius: 0,
+                                endRadius: discSize * 0.7
+                            )
+                        )
+                )
                 .frame(width: discSize, height: discSize)
                 .overlay(
                     Circle()
-                        .stroke(Color.white.opacity(0.8 * energy), lineWidth: 1.2)
+                        .stroke(Color.white.opacity(0.9 * energy), lineWidth: 1.2)
                         .blur(radius: 0.8)
                 )
+                .shadow(color: OttoTheme.sky.opacity(0.35 * energy), radius: 24, y: 10)
         }
         .scaleEffect(breathing ? 1.012 : 0.988)
         .scaleEffect(speakingPulse ? 1.04 : 1.0)
@@ -177,8 +242,9 @@ struct PressableButtonStyle: ButtonStyle {
     }
 }
 
-/// The big mic — a full-white disc with a soft elevation ring and glow,
-/// black glyph, exactly the reference's center control.
+/// The big mic — an ink disc in a soft well, white glyph, gently glowing
+/// with the palette. The one dark object on the light stage, so the eye
+/// lands on it.
 struct MicButton: View {
     let systemName: String
     let action: () -> Void
@@ -186,25 +252,25 @@ struct MicButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                // The soft ring the white disc sits in.
+                // The soft well the disc sits in.
                 Circle()
-                    .fill(Color(white: 0.12))
+                    .fill(OttoTheme.control)
                     .frame(width: 104, height: 104)
                 Circle()
-                    .fill(Color.white)
+                    .fill(OttoTheme.ink)
                     .frame(width: 74, height: 74)
-                    .shadow(color: .white.opacity(0.22), radius: 18)
-                    .shadow(color: .black.opacity(0.55), radius: 10, y: 5)
+                    .shadow(color: OttoTheme.sky.opacity(0.35), radius: 18)
+                    .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
                 Image(systemName: systemName)
                     .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(Color.black)
+                    .foregroundStyle(Color.white)
             }
         }
         .buttonStyle(PressableButtonStyle(scale: 0.9))
     }
 }
 
-/// A circular monochrome control — hub, mic, settings.
+/// A circular light control: white disc, ink glyph, floating on shadow.
 struct CircleIconButton: View {
     let systemName: String
     var prominent = false
@@ -215,11 +281,30 @@ struct CircleIconButton: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: diameter * 0.36, weight: .medium))
-                .foregroundStyle(prominent ? Color.black : OttoTheme.textPrimary)
+                .foregroundStyle(prominent ? Color.white : OttoTheme.ink)
                 .frame(width: diameter, height: diameter)
-                .background(prominent ? Color.white : OttoTheme.control, in: Circle())
+                .background(prominent ? OttoTheme.ink : OttoTheme.surface, in: Circle())
                 .overlay(Circle().stroke(OttoTheme.hairline, lineWidth: 1))
+                .shadow(color: .black.opacity(0.07), radius: 10, y: 4)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.88))
+    }
+}
+
+/// The ink pill primary action ("Confirm", "Add all", "Send…").
+struct InkPillButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 9)
+                .background(OttoTheme.ink, in: Capsule())
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.95))
     }
 }

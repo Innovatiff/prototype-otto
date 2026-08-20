@@ -20,6 +20,8 @@ final class GuidanceRuntime {
 
     private(set) var phase: Phase = .idle
     private(set) var sessionTitle = ""
+    /// The plan's domain ("fitness", …) — the illustration fallback.
+    private(set) var sessionDomain: String?
     private(set) var currentStep: Step?
     private(set) var stepIndex = 0
     private(set) var totalSteps = 0
@@ -97,6 +99,7 @@ final class GuidanceRuntime {
         // flush, reference weights) happens under it, never in front of it.
         phase = .running
         sessionTitle = template.title
+        sessionDomain = domain
         totalSteps = template.steps.count
         stepIndex = resumeFrom?.currentStepIndex ?? 0
         currentStep = nil

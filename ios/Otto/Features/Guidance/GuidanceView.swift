@@ -1,25 +1,37 @@
 import SwiftUI
 
 /// The guided session screen — designed for a phone on a bench three feet
-/// away, or a counter with wet hands. Huge type, a ring for time, one
-/// full-width Done, no chrome anywhere. Voice does everything; the screen
+/// away, or a counter with wet hands. Light like the rest of the app:
+/// huge ink type, each step illustrated in its own color, a colored ring
+/// for time, one full-width Done. Voice does everything; the screen
 /// confirms it.
 struct GuidanceView: View {
     @Bindable var runtime: GuidanceRuntime
 
+    /// The current step's illustration (a moon while resting).
+    private var currentArt: StepArt.Art {
+        if runtime.resting {
+            return StepArt.Art(symbol: "moon.zzz.fill", paletteIndex: 2)
+        }
+        guard let step = runtime.currentStep else {
+            return StepArt.Art(symbol: "sparkles", paletteIndex: 2)
+        }
+        return StepArt.art(for: step.title, cue: step.cue, domain: runtime.sessionDomain)
+    }
+
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            OttoTheme.background.ignoresSafeArea()
             switch runtime.phase {
             case .running:
                 activeSession
             case .finished(let early):
                 finishedView(early: early)
             case .idle:
-                Color.black
+                OttoTheme.background
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
         .statusBarHidden()
     }
 
@@ -34,18 +46,18 @@ struct GuidanceView: View {
             HStack {
                 Text(runtime.sessionTitle.uppercased())
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(OttoTheme.textTertiary)
                     .kerning(1.5)
                 Spacer()
                 if runtime.isPaused {
                     Text("PAUSED")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OttoTheme.peach)
                         .kerning(1.5)
                 } else if runtime.answeringQuestion {
                     Text("OTTO")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(OttoTheme.textSecondary)
                         .kerning(1.5)
                 }
             }
@@ -54,22 +66,26 @@ struct GuidanceView: View {
 
             Spacer(minLength: 12)
 
-            // Readable across a room. The id swap animates each step in —
-            // the screen visibly turns a page instead of mutating text.
-            Text(runtime.resting ? "Rest" : (runtime.currentStep?.title ?? ""))
-                .font(.system(size: 54, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.5)
-                .lineLimit(3)
-                .padding(.horizontal, 24)
-                .id("step-\(runtime.stepIndex)-\(runtime.resting)")
-                .transition(
-                    .asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .opacity
-                    )
+            // The slide: this step's illustration, then its title, readable
+            // across a room. The id swap animates each step in — the screen
+            // visibly turns a page instead of mutating text.
+            VStack(spacing: 18) {
+                StepIllustration(art: currentArt, size: 88)
+                Text(runtime.resting ? "Rest" : (runtime.currentStep?.title ?? ""))
+                    .font(.system(size: 50, weight: .heavy, design: .rounded))
+                    .foregroundStyle(OttoTheme.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(3)
+                    .padding(.horizontal, 24)
+            }
+            .id("step-\(runtime.stepIndex)-\(runtime.resting)")
+            .transition(
+                .asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .opacity
                 )
+            )
 
             Spacer(minLength: 12)
 
@@ -80,7 +96,7 @@ struct GuidanceView: View {
             if let next = runtime.nextStepTitle {
                 Text("Next: \(next)")
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(OttoTheme.textTertiary)
                     .lineLimit(1)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 10)
@@ -95,9 +111,9 @@ struct GuidanceView: View {
     private var progressBar: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.12))
+                Capsule().fill(OttoTheme.control)
                 Capsule()
-                    .fill(.white)
+                    .fill(StepArt.color(for: currentArt))
                     .frame(
                         width: proxy.size.width
                             * (runtime.totalSteps > 0
@@ -123,13 +139,13 @@ struct GuidanceView: View {
                 if let target = Self.targetText(runtime.currentStep) {
                     Text(target)
                         .font(.system(size: 72, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OttoTheme.textPrimary)
                         .monospacedDigit()
                 }
                 if let status = runtime.statusText {
                     Text(status)
                         .font(.title3.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(OttoTheme.textSecondary)
                 }
             }
         }
@@ -140,13 +156,14 @@ struct GuidanceView: View {
         // The last ten seconds lean in: the ring thickens and the digits
         // grow, in step with the "Ten seconds" clip and its haptic.
         let urgent = timer.remaining <= 10 && !timer.isPaused
+        let ringColor = timer.isPaused ? OttoTheme.peach : StepArt.color(for: currentArt)
         return ZStack {
             Circle()
-                .stroke(.white.opacity(0.12), lineWidth: urgent ? 17 : 14)
+                .stroke(OttoTheme.control, lineWidth: urgent ? 17 : 14)
             Circle()
                 .trim(from: 0, to: fraction)
                 .stroke(
-                    timer.isPaused ? Color.orange : Color.white,
+                    ringColor,
                     style: StrokeStyle(lineWidth: urgent ? 17 : 14, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
@@ -154,7 +171,7 @@ struct GuidanceView: View {
             VStack(spacing: 2) {
                 Text(Self.clockText(timer.remaining))
                     .font(.system(size: 58, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OttoTheme.textPrimary)
                     .monospacedDigit()
                     .contentTransition(.numericText(countsDown: true))
                     .animation(.snappy(duration: 0.3), value: Self.clockText(timer.remaining))
@@ -162,7 +179,7 @@ struct GuidanceView: View {
                 if let status = runtime.statusText {
                     Text(status)
                         .font(.callout.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(OttoTheme.textSecondary)
                 }
             }
         }
@@ -181,10 +198,11 @@ struct GuidanceView: View {
         } label: {
             Text("Done")
                 .font(.title2.weight(.bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(Color.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 64)
-                .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .background(OttoTheme.ink, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.97))
         .padding(.horizontal, 24)
@@ -212,7 +230,7 @@ struct GuidanceView: View {
             .accessibilityLabel("End the session")
         }
         .font(.subheadline.weight(.medium))
-        .foregroundStyle(.white.opacity(0.45))
+        .foregroundStyle(OttoTheme.textSecondary)
         .padding(.horizontal, 40)
         .padding(.top, 14)
         .padding(.bottom, 18)
@@ -225,16 +243,16 @@ struct GuidanceView: View {
             Spacer()
             Image(systemName: early ? "flag.checkered" : "checkmark.circle.fill")
                 .font(.system(size: 64))
-                .foregroundStyle(.white)
+                .foregroundStyle(early ? OttoTheme.textPrimary : OttoTheme.mint)
             Text(early ? "Saved where you stopped" : "That's the session")
                 .font(.system(size: 38, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(OttoTheme.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
             if let snapshot = runtime.lastSnapshot {
                 Text(Self.finishLine(snapshot))
                     .font(.title3)
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(OttoTheme.textSecondary)
             }
             Spacer()
             Button {
@@ -243,10 +261,10 @@ struct GuidanceView: View {
             } label: {
                 Text("Done")
                     .font(.title2.weight(.bold))
-                    .foregroundStyle(.black)
+                    .foregroundStyle(Color.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 64)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .background(OttoTheme.ink, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
             .buttonStyle(PressableButtonStyle(scale: 0.97))
             .padding(.horizontal, 24)

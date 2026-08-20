@@ -95,15 +95,7 @@ private struct PlanSectionView: View {
                 historySection
             }
         }
-        .padding(16)
-        .background(
-            OttoTheme.surface,
-            in: RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
-                .stroke(OttoTheme.hairline, lineWidth: 1)
-        )
+        .ottoCard(padding: 16)
         .padding(.horizontal, 18)
         .task(id: shownId) { await model.loadDetail(id: shownId) }
     }
@@ -134,12 +126,12 @@ private struct PlanSectionView: View {
                     } label: {
                         Label(Self.startLabel(next), systemImage: "play.fill")
                             .font(.callout.weight(.semibold))
-                            .foregroundStyle(Color.black)
+                            .foregroundStyle(Color.white)
                             .padding(.horizontal, 18)
                             .padding(.vertical, 9)
-                            .background(Color.white, in: Capsule())
+                            .background(OttoTheme.ink, in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle(scale: 0.95))
                 }
                 Button(action: onAdaptPlan) {
                     Label("Adapt", systemImage: "mic.fill")
@@ -208,10 +200,10 @@ private struct PlanSectionView: View {
                     if Self.isDeloadWeek(entries) {
                         Text("DELOAD")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.black)
+                            .foregroundStyle(Color.white)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
-                            .background(Color.white, in: Capsule())
+                            .background(OttoTheme.peach, in: Capsule())
                     }
                 }
             }
@@ -224,29 +216,44 @@ private struct PlanSectionView: View {
         section("SESSIONS — tap for steps") {
             ForEach(plan.sessions) { session in
                 DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 10) {
                         ForEach(session.steps) { step in
-                            VStack(alignment: .leading, spacing: 1) {
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(step.title)
-                                        .font(.caption)
-                                        .foregroundStyle(OttoTheme.textPrimary)
-                                    Spacer()
-                                    if let target = Self.targetLine(step) {
-                                        Text(target)
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(OttoTheme.textSecondary)
+                            HStack(alignment: .center, spacing: 10) {
+                                StepIllustration(
+                                    art: StepArt.art(
+                                        for: step.title,
+                                        cue: step.cue,
+                                        domain: plan.meta.domain
+                                    ),
+                                    size: 34
+                                )
+                                VStack(alignment: .leading, spacing: 1) {
+                                    HStack(alignment: .firstTextBaseline) {
+                                        Text(step.title)
+                                            .font(.caption.weight(.medium))
+                                            .foregroundStyle(OttoTheme.textPrimary)
+                                        Spacer()
+                                        if let target = Self.targetLine(step) {
+                                            Text(target)
+                                                .font(.caption.monospacedDigit())
+                                                .foregroundStyle(OttoTheme.textSecondary)
+                                        }
                                     }
+                                    Text(step.cue)
+                                        .font(.caption2)
+                                        .foregroundStyle(OttoTheme.textTertiary)
+                                        .lineLimit(2)
                                 }
-                                Text(step.cue)
-                                    .font(.caption2)
-                                    .foregroundStyle(OttoTheme.textTertiary)
                             }
                         }
                     }
-                    .padding(.top, 6)
+                    .padding(.top, 8)
                 } label: {
-                    HStack {
+                    HStack(spacing: 10) {
+                        StepIllustration(
+                            art: StepArt.art(for: session.title, domain: plan.meta.domain),
+                            size: 40
+                        )
                         Text(session.title)
                             .font(.callout.weight(.medium))
                             .foregroundStyle(OttoTheme.textPrimary)

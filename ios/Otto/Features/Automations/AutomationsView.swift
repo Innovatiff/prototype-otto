@@ -90,23 +90,45 @@ private struct AutomationRow: View {
     let model: AutomationsModel
     let automation: Automation
 
+    /// Each automation type wears its own color and glyph.
+    private var typeArt: (symbol: String, color: Color) {
+        switch automation.type {
+        case .morningBrief: return ("sun.max.fill", OttoTheme.lemon)
+        case .eveningShutdown: return ("moon.stars.fill", OttoTheme.lavender)
+        case .meetingPrep: return ("person.2.fill", OttoTheme.sky)
+        case .planCheckin: return ("chart.bar.fill", OttoTheme.mint)
+        case .weeklyReview: return ("clock.arrow.circlepath", OttoTheme.peach)
+        case .custom: return ("sparkles", OttoTheme.rose)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Toggle(isOn: enabledBinding) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.body)
-                    Text(AutomationScheduleText.describe(automation.schedule))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(
-                        AutomationScheduleText.lastRunLine(
-                            lastRunAt: automation.lastRunAt,
-                            lastResult: automation.lastResult
+                HStack(spacing: 12) {
+                    Image(systemName: typeArt.symbol)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(typeArt.color)
+                        .frame(width: 38, height: 38)
+                        .background(
+                            typeArt.color.opacity(0.16),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                         )
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.body)
+                        Text(AutomationScheduleText.describe(automation.schedule))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(
+                            AutomationScheduleText.lastRunLine(
+                                lastRunAt: automation.lastRunAt,
+                                lastResult: automation.lastResult
+                            )
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    }
                 }
             }
             if automation.enabled, case .fixed(_, let timeOfDay) = automation.schedule {

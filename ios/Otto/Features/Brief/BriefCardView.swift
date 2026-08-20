@@ -77,10 +77,10 @@ struct BriefCardView: View {
                         ForEach(weather.advice, id: \.self) { tag in
                             Text(tag.rawValue.uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Color.black)
+                                .foregroundStyle(Color.white)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
-                                .background(Color.white, in: Capsule())
+                                .background(OttoTheme.sky, in: Capsule())
                         }
                     }
                 }

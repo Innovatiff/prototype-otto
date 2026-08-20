@@ -1,23 +1,12 @@
 import SwiftUI
 
-/// Otto's stage. No header, no chrome: a title, the eclipse, the words
-/// being exchanged right now, and three controls. History and management
-/// live in the hub; typing lives in settings; a triple-tap anywhere still
-/// toggles the debug overlay.
+/// Otto's home: nothing but the conversation. A greeting, the orb, the
+/// words being exchanged right now, and the mic. Everything else lives in
+/// its own tab; a triple-tap anywhere still toggles the debug overlay.
 struct ConversationView: View {
     @Bindable var model: ConversationModel
-    /// Settings sheet (server URL, account, typed fallback input).
-    @Bindable var settings: DebugModel
-    @Bindable var memory: MemoryModel
-    @Bindable var tasks: TasksModel
-    @Bindable var plans: PlansModel
-    /// Owned by the app; the settings sheet flips its consent and the view
-    /// kicks an immediate first sync on opt-in.
-    var calendarSync: CalendarSyncService
-    /// The automations management screen's state (settings sheet link).
-    var automations: AutomationsModel
-    @State private var showingSettings = false
-    @State private var showingHub = false
+    /// Signed-out state routes here (the Account tab holds sign-in).
+    var onOpenAccount: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,29 +31,6 @@ struct ConversationView: View {
                 withAnimation(.snappy) { model.toggleOverlay() }
             }
         )
-        .sheet(isPresented: $showingHub) {
-            HubView(
-                tasks: tasks,
-                memory: memory,
-                plans: plans,
-                onAdaptPlan: {
-                    // Adaptation is spoken: close the hub, open the mic, and
-                    // the user says what changed.
-                    showingHub = false
-                    model.beginPlanAdaptation()
-                },
-                onStartSession: { plan in
-                    showingHub = false
-                    Task {
-                        // Let the sheet finish dismissing before the
-                        // full-screen cover presents — simultaneous
-                        // transitions can drop the presentation.
-                        try? await Task.sleep(for: .milliseconds(300))
-                        await model.startSession(with: plan)
-                    }
-                }
-            )
-        }
         .fullScreenCover(
             isPresented: Binding(
                 get: { model.guidance.phase != .idle },
@@ -77,33 +43,11 @@ struct ConversationView: View {
         ) {
             GuidanceView(runtime: model.guidance)
         }
-        .sheet(isPresented: $showingSettings) {
-            DebugView(
-                model: settings,
-                automations: automations,
-                onBriefScheduleChange: { enabled, hour, minute in
-                    model.setBriefSchedule(enabled: enabled, hour: hour, minute: minute)
-                },
-                onCalendarSyncChange: { enabled in
-                    if enabled {
-                        // Consent just granted — push the first view now so
-                        // meeting prep can arm today, not tomorrow.
-                        Task { await calendarSync.syncIfNeeded(force: true) }
-                    }
-                }
-            )
-        }
         .sheet(item: $model.composeRequest) { request in
             MessageComposeView(request: request) {
                 model.composeRequest = nil
             }
             .ignoresSafeArea()
-        }
-        .onChange(of: showingSettings) { _, isPresented in
-            if !isPresented {
-                model.refreshAccount()
-                Task { await model.refreshUpNext() }
-            }
         }
         .onChange(of: model.guidance.phase) { _, phase in
             if phase == .idle {
@@ -114,16 +58,6 @@ struct ConversationView: View {
         .task {
             model.activate()
             model.refreshAccount()
-            // Wake time edited on the automations screen keeps the LOCAL
-            // weekday brief notifications (the no-push fallback) in step.
-            automations.onWakeTimeChanged = { hour, minute in
-                let defaults = UserDefaults.standard
-                defaults.set(hour, forKey: "otto.brief.hour")
-                defaults.set(minute, forKey: "otto.brief.minute")
-                if defaults.bool(forKey: "otto.brief.enabled") {
-                    model.setBriefSchedule(enabled: true, hour: hour, minute: minute)
-                }
-            }
         }
     }
 
@@ -134,12 +68,17 @@ struct ConversationView: View {
             Spacer(minLength: 28)
 
             if model.signedIn {
-                Text("What's first?")
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(OttoTheme.textPrimary)
+                VStack(spacing: 6) {
+                    Text(ConversationModel.greeting(for: Date()))
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundStyle(OttoTheme.textPrimary)
+                    Text("What's first?")
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
+                        .foregroundStyle(OttoTheme.textSecondary)
+                }
             } else {
                 Text("Sign in to talk to Otto.")
-                    .font(.system(size: 26, weight: .semibold))
+                    .font(.system(size: 26, weight: .semibold, design: .rounded))
                     .foregroundStyle(OttoTheme.textPrimary)
             }
 
@@ -154,14 +93,14 @@ struct ConversationView: View {
                         Text(upNext)
                             .font(.footnote.weight(.semibold))
                     }
-                    .foregroundStyle(OttoTheme.textPrimary)
+                    .foregroundStyle(Color.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(OttoTheme.surface, in: Capsule())
-                    .overlay(Capsule().stroke(OttoTheme.hairline, lineWidth: 1))
+                    .background(OttoTheme.ink, in: Capsule())
+                    .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
                 }
-                .buttonStyle(.plain)
-                .padding(.top, 10)
+                .buttonStyle(PressableButtonStyle(scale: 0.94))
+                .padding(.top, 12)
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 .accessibilityLabel("Start \(upNext)")
             }
@@ -206,14 +145,9 @@ struct ConversationView: View {
     @ViewBuilder
     private var dialogue: some View {
         if !model.signedIn {
-            Button("Open Settings") {
-                showingSettings = true
+            InkPillButton(title: "Go to Account") {
+                onOpenAccount()
             }
-            .font(.callout.weight(.medium))
-            .foregroundStyle(Color.black)
-            .padding(.horizontal, 22)
-            .padding(.vertical, 10)
-            .background(Color.white, in: Capsule())
         } else {
             ScrollView {
                 VStack(spacing: 10) {
@@ -303,7 +237,7 @@ struct ConversationView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("TEXT TO \(request.recipientName.uppercased())")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(OttoTheme.textTertiary)
+                    .foregroundStyle(OttoTheme.rose)
                 Text(request.body)
                     .font(.callout)
                     .foregroundStyle(OttoTheme.textPrimary)
@@ -315,28 +249,12 @@ struct ConversationView: View {
                     .font(.callout)
                     .foregroundStyle(OttoTheme.textSecondary)
                     Spacer()
-                    Button {
+                    InkPillButton(title: "Send…") {
                         model.confirmDraftTapped()
-                    } label: {
-                        Text("Send…")
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(Color.black)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 8)
-                            .background(Color.white, in: Capsule())
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .padding(14)
-            .background(
-                OttoTheme.surface,
-                in: RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
-                    .stroke(OttoTheme.hairline, lineWidth: 1)
-            )
+            .ottoCard(padding: 14)
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
         }
@@ -354,7 +272,7 @@ struct ConversationView: View {
                 case .create(let draft):
                     Text("ADD TO CALENDAR")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(OttoTheme.textTertiary)
+                        .foregroundStyle(OttoTheme.sky)
                     Text(draft.title)
                         .font(.callout.weight(.medium))
                         .foregroundStyle(OttoTheme.textPrimary)
@@ -371,7 +289,7 @@ struct ConversationView: View {
                 case .move(let original, let newStart, _):
                     Text("MOVE EVENT")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(OttoTheme.textTertiary)
+                        .foregroundStyle(OttoTheme.sky)
                     Text(original.title)
                         .font(.callout.weight(.medium))
                         .foregroundStyle(OttoTheme.textPrimary)
@@ -389,28 +307,12 @@ struct ConversationView: View {
                     .font(.callout)
                     .foregroundStyle(OttoTheme.textSecondary)
                     Spacer()
-                    Button {
+                    InkPillButton(title: "Confirm") {
                         model.confirmCalendarTapped()
-                    } label: {
-                        Text("Confirm")
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(Color.black)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 8)
-                            .background(Color.white, in: Capsule())
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .padding(14)
-            .background(
-                OttoTheme.surface,
-                in: RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
-                    .stroke(OttoTheme.hairline, lineWidth: 1)
-            )
+            .ottoCard(padding: 14)
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
         }
@@ -426,7 +328,7 @@ struct ConversationView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("ADD TO CALENDAR")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(OttoTheme.textTertiary)
+                    .foregroundStyle(OttoTheme.sky)
                 Text("\(model.planScheduleDrafts.count) sessions")
                     .font(.callout.weight(.medium))
                     .foregroundStyle(OttoTheme.textPrimary)
@@ -458,62 +360,27 @@ struct ConversationView: View {
                     .font(.callout)
                     .foregroundStyle(OttoTheme.textSecondary)
                     Spacer()
-                    Button {
+                    InkPillButton(title: "Add all") {
                         model.confirmPlanScheduleTapped()
-                    } label: {
-                        Text("Add all")
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(Color.black)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 8)
-                            .background(Color.white, in: Capsule())
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .padding(14)
-            .background(
-                OttoTheme.surface,
-                in: RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
-                    .stroke(OttoTheme.hairline, lineWidth: 1)
-            )
+            .ottoCard(padding: 14)
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
         }
     }
 
-    // MARK: - Controls: hub · mic · settings
+    // MARK: - The mic
 
     private var controlBar: some View {
-        HStack {
-            CircleIconButton(systemName: "square.grid.2x2") {
-                Haptics.tap()
-                showingHub = true
-            }
-            .accessibilityLabel("Hub")
-
-            Spacer()
-
-            MicButton(systemName: model.state == .idle ? "mic.fill" : "stop.fill") {
-                Haptics.press()
-                model.toggleVoice()
-            }
-            .disabled(!model.signedIn)
-            .accessibilityLabel(model.state == .idle ? "Start voice conversation" : "Stop")
-
-            Spacer()
-
-            CircleIconButton(systemName: "gearshape") {
-                Haptics.tap()
-                showingSettings = true
-            }
-            .accessibilityLabel("Settings")
+        MicButton(systemName: model.state == .idle ? "mic.fill" : "stop.fill") {
+            Haptics.press()
+            model.toggleVoice()
         }
-        .padding(.horizontal, 34)
-        .padding(.top, 6)
-        .padding(.bottom, 14)
+        .disabled(!model.signedIn)
+        .accessibilityLabel(model.state == .idle ? "Start voice conversation" : "Stop")
+        .padding(.top, 2)
+        .padding(.bottom, 66)
     }
 }

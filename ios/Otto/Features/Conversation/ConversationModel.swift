@@ -365,9 +365,44 @@ final class ConversationModel {
                 await self.voiceLoop.startConversation()
                 await self.voiceLoop.announce(snapshot.resumeOfferLine)
             }
+        } else {
+            maybeGreetOnOpen()
         }
 
         Task { await self.refreshUpNext() }
+    }
+
+    // MARK: - The greeting
+
+    /// The moment the app opens, Otto says hello — once per genuine
+    /// arrival, never on every backgrounding bounce, and never over a
+    /// resume offer or a push-tapped brief.
+    static let lastGreetingKey = "otto.greeting.lastAt"
+    /// Re-greet only after this long away.
+    nonisolated static let greetingGap: TimeInterval = 4 * 60 * 60
+
+    /// "Good morning." / "Good afternoon." / "Good evening." — local time.
+    nonisolated static func greeting(for date: Date, calendar: Calendar = .current) -> String {
+        let hour = calendar.component(.hour, from: date)
+        switch hour {
+        case 5..<12: return "Good morning."
+        case 12..<18: return "Good afternoon."
+        default: return "Good evening."
+        }
+    }
+
+    private func maybeGreetOnOpen() {
+        guard signedIn, pendingDeepLink == nil else { return }
+        let defaults = UserDefaults.standard
+        let last = defaults.object(forKey: Self.lastGreetingKey) as? Date
+        if let last, Date().timeIntervalSince(last) < Self.greetingGap {
+            return
+        }
+        defaults.set(Date(), forKey: Self.lastGreetingKey)
+        let line = Self.greeting(for: Date())
+        Task {
+            await self.voiceLoop.announce(line)
+        }
     }
 
     func storedWakeTime() -> (hour: Int, minute: Int) {

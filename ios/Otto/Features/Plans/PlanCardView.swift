@@ -86,10 +86,10 @@ struct PlanCardView: View {
             if isDeloadWeek(entries) {
                 Text("DELOAD")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.black)
+                    .foregroundStyle(Color.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color.white, in: Capsule())
+                    .background(OttoTheme.peach, in: Capsule())
             }
         }
     }
