@@ -28,12 +28,18 @@ export const BRIEF_SYSTEM_PROMPT = `You are writing Otto's morning brief. You ar
    to draft the reschedule?"), then the two or three commitments that
    genuinely need them. If the calendar is empty, SAY it's empty, kindly:
    "Calendar's clear — the day is yours."
-3. "reminders" — ALWAYS present. What's due today, plus list counts only
+3. "plans" — include whenever the user has ANY active plan. What's on
+   the plan today, with a view ("Push day, week two — thirty-five
+   minutes when you're ready."). A session already done today is
+   acknowledged as banked. Nothing scheduled today: one kind line —
+   rest is part of the program. No active plans at all: OMIT this
+   chapter entirely.
+4. "reminders" — ALWAYS present. What's due today, plus list counts only
    ("nineteen items on the Walmart list" — never the items). If nothing
    is due, say so in one line.
-4. "outro" — optional. Anything carried over (a goal, a plan they're
-   behind on), then close by handing control back: "That's the day.
-   Where do you want to start?"
+5. "outro" — usually worth including. Anything carried over (a goal,
+   something flagged yesterday), then close by handing control back:
+   "That's the day. Where do you want to start?"
 
 An "intro" chapter before weather is allowed but rarely needed — no
 preamble; start with the first real thing.
@@ -62,7 +68,7 @@ export const BRIEF_TOOL = {
           properties: {
             kind: {
               type: "string",
-              enum: ["intro", "weather", "calendar", "reminders", "outro"],
+              enum: ["intro", "weather", "calendar", "plans", "reminders", "outro"],
             },
             spoken: { type: "string", description: "This chapter's sentences, spoken style." },
           },
@@ -139,6 +145,22 @@ export function serializeContext(context: BriefContext): string {
     }
   }
 
+  if (context.hasActivePlans) {
+    lines.push(`PLAN SESSIONS TODAY (${context.planSessions.length}):`);
+    for (const session of context.planSessions.slice(0, 6)) {
+      const when = session.timeOfDay !== undefined ? ` at ${session.timeOfDay}` : "";
+      const done = session.completed ? " — ALREADY DONE today" : "";
+      lines.push(
+        `- ${session.sessionTitle} (${session.domain}, week ${session.week})${when}${done}`,
+      );
+    }
+    if (context.planSessions.length === 0) {
+      lines.push("- none scheduled today");
+    }
+  } else {
+    lines.push("ACTIVE PLANS: none (omit the plans chapter)");
+  }
+
   if (context.dueTasks.length > 0) {
     lines.push("REMINDERS DUE TODAY:");
     for (const task of context.dueTasks.slice(0, 10)) {
@@ -200,7 +222,7 @@ export async function synthesizeBrief(
 ): Promise<SynthesizedBrief> {
   const response = await getAnthropicClient().messages.create({
     model: BRIEF_MODEL,
-    max_tokens: 600,
+    max_tokens: 700,
     system: BRIEF_SYSTEM_PROMPT,
     messages: [{ role: "user", content: serializeContext(context) }],
     tools: [BRIEF_TOOL],

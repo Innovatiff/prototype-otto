@@ -19,6 +19,7 @@ struct BriefCard: Codable, Hashable, Sendable {
     var conflicts: [Conflict]
     var dueTasks: [BriefDueTask]
     var lists: [BriefListCount]
+    var planSessions: [BriefPlanSession]?
 
     init(
         date: String,
@@ -26,7 +27,8 @@ struct BriefCard: Codable, Hashable, Sendable {
         events: [CalendarEvent],
         conflicts: [Conflict],
         dueTasks: [BriefDueTask],
-        lists: [BriefListCount]
+        lists: [BriefListCount],
+        planSessions: [BriefPlanSession]? = nil
     ) {
         self.date = date
         self.weather = weather
@@ -34,6 +36,7 @@ struct BriefCard: Codable, Hashable, Sendable {
         self.conflicts = conflicts
         self.dueTasks = dueTasks
         self.lists = lists
+        self.planSessions = planSessions
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -43,6 +46,7 @@ struct BriefCard: Codable, Hashable, Sendable {
         case conflicts
         case dueTasks
         case lists
+        case planSessions
     }
 
     init(from decoder: any Decoder) throws {
@@ -53,6 +57,7 @@ struct BriefCard: Codable, Hashable, Sendable {
         self.conflicts = try container.decode([Conflict].self, forKey: .conflicts)
         self.dueTasks = try container.decode([BriefDueTask].self, forKey: .dueTasks)
         self.lists = try container.decode([BriefListCount].self, forKey: .lists)
+        self.planSessions = try container.decodeIfPresent([BriefPlanSession].self, forKey: .planSessions)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -63,6 +68,7 @@ struct BriefCard: Codable, Hashable, Sendable {
         try container.encode(self.conflicts, forKey: .conflicts)
         try container.encode(self.dueTasks, forKey: .dueTasks)
         try container.encode(self.lists, forKey: .lists)
+        try container.encodeIfPresent(self.planSessions, forKey: .planSessions)
     }
 }
 
@@ -100,6 +106,7 @@ enum BriefChapterKind: String, Codable, Hashable, Sendable, CaseIterable {
     case intro
     case weather
     case calendar
+    case plans
     case reminders
     case outro
 }
@@ -179,6 +186,66 @@ struct BriefListCount: Codable, Hashable, Sendable {
         try container.encode(self.title, forKey: .title)
         try container.encodeIfPresent(self.context, forKey: .context)
         try container.encode(self.openCount, forKey: .openCount)
+    }
+}
+
+struct BriefPlanSession: Codable, Hashable, Sendable {
+    var planId: String
+    var sessionId: String
+    var sessionTitle: String
+    var domain: String
+    var week: Int
+    var timeOfDay: String?
+    var completed: Bool
+
+    init(
+        planId: String,
+        sessionId: String,
+        sessionTitle: String,
+        domain: String,
+        week: Int,
+        timeOfDay: String? = nil,
+        completed: Bool
+    ) {
+        self.planId = planId
+        self.sessionId = sessionId
+        self.sessionTitle = sessionTitle
+        self.domain = domain
+        self.week = week
+        self.timeOfDay = timeOfDay
+        self.completed = completed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case planId
+        case sessionId
+        case sessionTitle
+        case domain
+        case week
+        case timeOfDay
+        case completed
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.planId = try container.decode(String.self, forKey: .planId)
+        self.sessionId = try container.decode(String.self, forKey: .sessionId)
+        self.sessionTitle = try container.decode(String.self, forKey: .sessionTitle)
+        self.domain = try container.decode(String.self, forKey: .domain)
+        self.week = try container.decode(Int.self, forKey: .week)
+        self.timeOfDay = try container.decodeIfPresent(String.self, forKey: .timeOfDay)
+        self.completed = try container.decode(Bool.self, forKey: .completed)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.planId, forKey: .planId)
+        try container.encode(self.sessionId, forKey: .sessionId)
+        try container.encode(self.sessionTitle, forKey: .sessionTitle)
+        try container.encode(self.domain, forKey: .domain)
+        try container.encode(self.week, forKey: .week)
+        try container.encodeIfPresent(self.timeOfDay, forKey: .timeOfDay)
+        try container.encode(self.completed, forKey: .completed)
     }
 }
 

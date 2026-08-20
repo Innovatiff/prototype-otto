@@ -59,6 +59,7 @@ briefRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     conflicts: request.conflicts,
     dueTasks: context.dueTasks,
     lists: context.lists,
+    planSessions: context.planSessions,
   };
 
   const payload: BriefResponse = {
@@ -107,6 +108,7 @@ briefRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     conflicts: request.conflicts.length,
     dueTasks: context.dueTasks.length,
     lists: context.lists.length,
+    planSessions: context.planSessions.length,
     hadWeather: context.weather !== null,
     hadYesterday: context.yesterdaySummary !== null,
     spokenChars: synthesis.spoken.length,

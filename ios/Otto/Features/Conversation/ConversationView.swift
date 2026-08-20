@@ -148,33 +148,35 @@ struct ConversationView: View {
     }
 
     /// The orb holds center stage until a card needs the room — the brief's
-    /// resting card, a plan card, or a visual chapter of the spoken tour.
+    /// resting card, a plan card, or a data chapter of the spoken tour.
     private var orbIsBig: Bool {
-        model.briefCard == nil && model.planCard == nil && !tourVisualActive
+        model.briefCard == nil && model.planCard == nil && !tourDataChapterActive
     }
 
-    private var tourVisualActive: Bool {
+    /// Hero chapters (intro/outro) are pure animated type under a big orb;
+    /// data chapters shrink the orb and take the room.
+    private var tourDataChapterActive: Bool {
         guard let chapter = model.briefChapter else { return false }
-        return chapter.kind.hasVisual
+        return !chapter.kind.isHero
     }
 
-    /// The tour's stage slot: each chapter's card slides in from the right
-    /// while the previous slides out to the left, in step with the speech.
-    /// Orb-only chapters (intro/outro) leave the slot empty, so whatever
-    /// was up slides away and the orb takes back the room.
+    /// The tour's stage slot: each chapter's visual slides in from the
+    /// right while the previous slides out to the left, in step with the
+    /// speech. Every chapter has a visual — cards for data, animated type
+    /// for the intro and outro.
     private var tourSlide: some View {
         ZStack {
-            if let chapter = model.briefChapter, let tour = model.briefTourCard,
-                chapter.kind.hasVisual
-            {
-                BriefChapterCardView(chapter: chapter, card: tour)
-                    .id(model.briefChapterIndex)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        )
+            if let chapter = model.briefChapter, let tour = model.briefTourCard {
+                BriefChapterCardView(chapter: chapter, card: tour) {
+                    model.startTourPlanSession()
+                }
+                .id(model.briefChapterIndex)
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
                     )
+                )
             }
         }
         .padding(.horizontal, 16)

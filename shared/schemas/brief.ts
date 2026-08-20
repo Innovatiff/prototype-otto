@@ -36,6 +36,21 @@ export const BriefListCount = z.object({
 });
 export type BriefListCount = z.infer<typeof BriefListCount>;
 
+/** A plan session falling on today — what the plans chapter shows. */
+export const BriefPlanSession = z.object({
+  planId: zId,
+  sessionId: zId,
+  sessionTitle: z.string(),
+  domain: z.string(),
+  /** 1-indexed week of the plan this occurrence falls in. */
+  week: z.number().int().min(1),
+  /** Local wall-clock time when the schedule pins one, e.g. "08:00". */
+  timeOfDay: z.string().optional(),
+  /** Already completed today — spoken as banked, shown checked. */
+  completed: z.boolean(),
+});
+export type BriefPlanSession = z.infer<typeof BriefPlanSession>;
+
 /**
  * The structured half of the brief — what renders on screen while the
  * spoken half plays. Detail lives here; the voice is the summary.
@@ -48,6 +63,8 @@ export const BriefCard = z.object({
   conflicts: z.array(Conflict),
   dueTasks: z.array(BriefDueTask),
   lists: z.array(BriefListCount),
+  /** Today's plan sessions; empty when nothing falls today. */
+  planSessions: z.array(BriefPlanSession).optional(),
 });
 export type BriefCard = z.infer<typeof BriefCard>;
 
@@ -56,7 +73,14 @@ export type BriefCard = z.infer<typeof BriefCard>;
  * sliding the matching visual (weather tile, calendar list, reminders) in
  * while each one is being spoken — the words and the screen move together.
  */
-export const BriefChapterKind = z.enum(["intro", "weather", "calendar", "reminders", "outro"]);
+export const BriefChapterKind = z.enum([
+  "intro",
+  "weather",
+  "calendar",
+  "plans",
+  "reminders",
+  "outro",
+]);
 export type BriefChapterKind = z.infer<typeof BriefChapterKind>;
 
 export const BriefChapter = z.object({

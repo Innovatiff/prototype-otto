@@ -20,6 +20,9 @@ struct BriefCardView: View {
                     if !card.events.isEmpty {
                         eventsSection
                     }
+                    if let planSessions = card.planSessions, !planSessions.isEmpty {
+                        plansSection(planSessions)
+                    }
                     if !card.dueTasks.isEmpty {
                         dueSection
                     }
@@ -125,6 +128,33 @@ struct BriefCardView: View {
                                 .font(.caption2)
                                 .foregroundStyle(OttoTheme.textTertiary)
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    private func plansSection(_ sessions: [BriefPlanSession]) -> some View {
+        section("ON THE PLAN") {
+            ForEach(Array(sessions.enumerated()), id: \.offset) { _, session in
+                HStack(spacing: 10) {
+                    StepIllustration(
+                        art: StepArt.art(for: session.sessionTitle, domain: session.domain),
+                        size: 30
+                    )
+                    Text(session.sessionTitle)
+                        .font(.callout)
+                        .foregroundStyle(OttoTheme.textPrimary)
+                        .lineLimit(1)
+                    Spacer()
+                    if session.completed {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(OttoTheme.mint)
+                    } else {
+                        Text("Week \(session.week)")
+                            .font(.caption)
+                            .foregroundStyle(OttoTheme.textSecondary)
                     }
                 }
             }

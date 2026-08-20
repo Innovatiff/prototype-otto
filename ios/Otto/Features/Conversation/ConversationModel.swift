@@ -157,6 +157,19 @@ final class ConversationModel {
         Task { await self.startSession(with: plan) }
     }
 
+    /// The plans chapter's Start button: the tour dies (its next announce
+    /// would talk over the session) and the normal up-next path takes the
+    /// stage. The chip's plan may not be loaded yet mid-tour — fetch it.
+    func startTourPlanSession() {
+        cancelBriefTour()
+        Task {
+            if self.upNextPlan == nil {
+                await self.refreshUpNext()
+            }
+            self.startUpNext()
+        }
+    }
+
     /// "Start my workout" — resolve the active plan's next occurrence and
     /// hand it to the runtime. Every failure is spoken; announce's tail
     /// returns the mic to conversation listening.

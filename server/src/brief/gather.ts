@@ -7,9 +7,12 @@
 import type {
   BriefDueTask,
   BriefListCount,
+  BriefPlanSession,
   BriefRequest,
   CurrentWeather,
   Memory,
+  Plan,
+  SessionRecord,
   Task,
 } from "@otto/shared";
 import { Task as TaskSchema } from "@otto/shared";
@@ -17,6 +20,7 @@ import { Task as TaskSchema } from "@otto/shared";
 import { COLLECTIONS, db } from "../firestore.js";
 import { errorFields, logWarning } from "../log.js";
 import { parseMemoryDoc } from "../memory/docs.js";
+import { loadActivePlans, loadSessionRecords } from "../plans/store.js";
 import { cachedCurrentWeather, DEFAULT_LAT, DEFAULT_LON } from "../services/weather/index.js";
 import { wallDate } from "../util/time.js";
 import { loadBriefSummary } from "./store.js";
@@ -31,6 +35,10 @@ export interface BriefContext {
   request: BriefRequest;
   dueTasks: BriefDueTask[];
   lists: BriefListCount[];
+  /** Today's plan occurrences. Empty ≠ no plans — see hasActivePlans. */
+  planSessions: BriefPlanSession[];
+  /** False means no active plans at all — the plans chapter is omitted. */
+  hasActivePlans: boolean;
   /** Newest goal/context memories, at most 5. */
   carried: Memory[];
   yesterdaySummary: string | null;
@@ -72,6 +80,73 @@ export function listCounts(tasks: Task[]): BriefListCount[] {
         ? [{ taskId: task.id, title: task.title, context: task.context, openCount }]
         : [];
     });
+}
+
+/**
+ * Schedule entries whose occurrence (plan start + dayOffset days) lands on
+ * today's wall date, marked completed when a session record for that
+ * template was filed today. Pure — the loader feeds it.
+ */
+export function planSessionsToday(
+  plans: readonly Plan[],
+  recordsByPlan: ReadonlyMap<string, readonly SessionRecord[]>,
+  now: Date,
+  timezone: string,
+): BriefPlanSession[] {
+  const today = wallDate(now, timezone);
+  const sessions: BriefPlanSession[] = [];
+  for (const plan of plans) {
+    const startMs = new Date(plan.createdAt).getTime();
+    const doneToday = new Set(
+      (recordsByPlan.get(plan.id) ?? [])
+        .filter((record) => wallDate(new Date(record.completedAt), timezone) === today)
+        .map((record) => record.sessionId),
+    );
+    for (const entry of plan.schedule) {
+      const occursOn = wallDate(new Date(startMs + entry.dayOffset * 86_400_000), timezone);
+      if (occursOn !== today) {
+        continue;
+      }
+      const template = plan.sessions.find((session) => session.id === entry.sessionId);
+      sessions.push({
+        planId: plan.id,
+        sessionId: entry.sessionId,
+        sessionTitle: template?.title ?? plan.meta.goal,
+        domain: plan.meta.domain,
+        week: Math.floor(entry.dayOffset / 7) + 1,
+        timeOfDay: entry.timeOfDay,
+        completed: doneToday.has(entry.sessionId),
+      });
+    }
+  }
+  return sessions.sort((a, b) => (a.timeOfDay ?? "99").localeCompare(b.timeOfDay ?? "99"));
+}
+
+/** Active plans + today's occurrences; degrades to "no plans" on failure. */
+async function loadPlanContext(
+  uid: string,
+  now: Date,
+  timezone: string,
+): Promise<{ planSessions: BriefPlanSession[]; hasActivePlans: boolean }> {
+  try {
+    const plans = await loadActivePlans(uid);
+    if (plans.length === 0) {
+      return { planSessions: [], hasActivePlans: false };
+    }
+    const recordsByPlan = new Map<string, readonly SessionRecord[]>();
+    await Promise.all(
+      plans.map(async (plan) => {
+        recordsByPlan.set(plan.id, await loadSessionRecords(uid, plan.id, 20));
+      }),
+    );
+    return {
+      planSessions: planSessionsToday(plans, recordsByPlan, now, timezone),
+      hasActivePlans: true,
+    };
+  } catch (err: unknown) {
+    logWarning("brief_plans_failed", { userId: uid, ...errorFields(err) });
+    return { planSessions: [], hasActivePlans: false };
+  }
 }
 
 /** Shared with the automation handlers (evening shutdown, meeting prep). */
@@ -123,12 +198,13 @@ export async function gatherBriefContext(
   const today = wallDate(now, request.timezone);
   const yesterday = wallDate(new Date(now.getTime() - 24 * 3600 * 1000), request.timezone);
 
-  const [weather, tasks, carried, yesterdaySummary] = await Promise.all([
+  const [weather, tasks, planContext, carried, yesterdaySummary] = await Promise.all([
     cachedCurrentWeather(request.lat ?? DEFAULT_LAT, request.lon ?? DEFAULT_LON),
     loadActiveTasks(uid).catch((err: unknown): Task[] => {
       logWarning("brief_tasks_failed", { userId: uid, ...errorFields(err) });
       return [];
     }),
+    loadPlanContext(uid, now, request.timezone),
     loadCarriedMemories(uid).catch((err: unknown): Memory[] => {
       logWarning("brief_memories_failed", { userId: uid, ...errorFields(err) });
       return [];
@@ -142,6 +218,8 @@ export async function gatherBriefContext(
     request,
     dueTasks: dueToday(tasks, now, request.timezone),
     lists: listCounts(tasks),
+    planSessions: planContext.planSessions,
+    hasActivePlans: planContext.hasActivePlans,
     carried,
     yesterdaySummary,
   };

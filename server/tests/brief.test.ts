@@ -1,10 +1,16 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { CurrentWeather, Task } from "@otto/shared";
+import type { CurrentWeather, Plan, SessionRecord, Task } from "@otto/shared";
 
 import type { BriefContext } from "../src/brief/gather.js";
-import { dueToday, fireInstant, listCounts, wallDate } from "../src/brief/gather.js";
+import {
+  dueToday,
+  fireInstant,
+  listCounts,
+  planSessionsToday,
+  wallDate,
+} from "../src/brief/gather.js";
 import {
   BRIEF_SYSTEM_PROMPT,
   BRIEF_TOOL,
@@ -86,6 +92,86 @@ test("lists are counted, never enumerated, and finished lists drop", () => {
   ]);
 });
 
+// ── Today's plan sessions ───────────────────────────────────────────
+
+function planFixture(): Plan {
+  return {
+    id: "p1",
+    ownerId: "u1",
+    meta: { domain: "fitness", goal: "Get stronger", horizonDays: 28, version: 1 },
+    constraints: {},
+    schedule: [
+      { sessionId: "s1", dayOffset: 0, timeOfDay: "08:00" },
+      { sessionId: "s2", dayOffset: 9, timeOfDay: "18:00" },
+      { sessionId: "s3", dayOffset: 9 },
+      { sessionId: "s1", dayOffset: 10 },
+    ],
+    sessions: [
+      { id: "s1", title: "Push Day", estimatedMinutes: 40, steps: [] },
+      { id: "s2", title: "Pull Day", estimatedMinutes: 45, steps: [] },
+    ],
+    status: "active",
+    createdAt: "2026-08-09T12:00:00.000Z",
+  };
+}
+
+function recordFixture(sessionId: string, completedAt: string): SessionRecord {
+  return {
+    id: `r-${sessionId}`,
+    ownerId: "u1",
+    planId: "p1",
+    sessionId,
+    startedAt: completedAt,
+    completedAt,
+    completedSteps: [],
+    skippedSteps: [],
+    loggedValues: {},
+    durationSec: 1800,
+    endedEarly: false,
+  };
+}
+
+test("planSessionsToday keeps today's occurrences, sorted, weeks computed", () => {
+  // 10:00 in Toronto on Aug 18; the plan started Aug 9, so dayOffset 9
+  // lands today (week 2), 0 was last week, 10 is tomorrow.
+  const now = new Date("2026-08-18T14:00:00.000Z");
+  const sessions = planSessionsToday(
+    [planFixture()],
+    new Map(),
+    now,
+    "America/Toronto",
+  );
+  assert.deepEqual(
+    sessions.map((s) => [s.sessionTitle, s.week, s.timeOfDay ?? null, s.completed]),
+    [
+      ["Pull Day", 2, "18:00", false],
+      // No template with id s3 — falls back to the plan's goal, sorts last.
+      ["Get stronger", 2, null, false],
+    ],
+  );
+});
+
+test("planSessionsToday marks completed only for records filed today", () => {
+  const now = new Date("2026-08-18T23:00:00.000Z"); // 19:00 Toronto
+  const records = new Map<string, readonly SessionRecord[]>([
+    [
+      "p1",
+      [
+        recordFixture("s2", "2026-08-18T21:30:00.000Z"), // today: banked
+        recordFixture("s3", "2026-08-17T21:30:00.000Z"), // yesterday: not
+      ],
+    ],
+  ]);
+  const sessions = planSessionsToday([planFixture()], records, now, "America/Toronto");
+  assert.deepEqual(
+    sessions.map((s) => [s.sessionId, s.completed]),
+    [
+      ["s2", true],
+      ["s3", false],
+    ],
+  );
+});
+
 // ── Serialization for the model ─────────────────────────────────────
 
 function contextFixture(): BriefContext {
@@ -144,6 +230,18 @@ function contextFixture(): BriefContext {
     },
     dueTasks: [{ taskId: "t1", title: "Call the pharmacy", at: "2026-08-18T19:00:00.000Z" }],
     lists: [{ taskId: "w1", title: "Walmart list", context: "Walmart", openCount: 19 }],
+    planSessions: [
+      {
+        planId: "p1",
+        sessionId: "s1",
+        sessionTitle: "Push Day",
+        domain: "fitness",
+        week: 2,
+        timeOfDay: "08:00",
+        completed: false,
+      },
+    ],
+    hasActivePlans: true,
     carried: [],
     yesterdaySummary: "Flagged the passport renewal; prioritized the deck review.",
   };
@@ -156,9 +254,25 @@ test("serialized context is compact, timezone-correct, and carries the digested 
   assert.ok(text.includes("CONFLICTS (detected in code, trust them):"));
   assert.ok(text.includes("overlap by 30min"));
   assert.ok(text.includes("Walmart list @ Walmart: 19 open"));
+  assert.ok(text.includes("PLAN SESSIONS TODAY (1):"));
+  assert.ok(text.includes("- Push Day (fitness, week 2) at 08:00"));
   assert.ok(text.includes("YESTERDAY'S BRIEF: Flagged the passport renewal"));
   // Item contents never ride along — counts only.
   assert.ok(!text.includes("onions"));
+});
+
+test("no active plans serializes as an explicit omit instruction", () => {
+  const context = { ...contextFixture(), planSessions: [], hasActivePlans: false };
+  const text = serializeContext(context);
+  assert.ok(text.includes("ACTIVE PLANS: none (omit the plans chapter)"));
+  assert.ok(!text.includes("PLAN SESSIONS TODAY"));
+});
+
+test("plans exist but nothing falls today — the rest-day line rides along", () => {
+  const context = { ...contextFixture(), planSessions: [] };
+  const text = serializeContext(context);
+  assert.ok(text.includes("PLAN SESSIONS TODAY (0):"));
+  assert.ok(text.includes("- none scheduled today"));
 });
 
 test("the brief prompt carries the spec's load-bearing rules", () => {
@@ -171,10 +285,12 @@ test("the brief prompt carries the spec's load-bearing rules", () => {
 
 // ── Chapters: the contract the synced visual tour rides on ──────────
 
-test("the chapter contract: three visuals always present, empties said kindly", () => {
+test("the chapter contract: core visuals always present, empties said kindly", () => {
   assert.ok(BRIEF_SYSTEM_PROMPT.includes('"weather" — ALWAYS present'));
   assert.ok(BRIEF_SYSTEM_PROMPT.includes('"calendar" — ALWAYS present'));
   assert.ok(BRIEF_SYSTEM_PROMPT.includes('"reminders" — ALWAYS present'));
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes('"plans" — include whenever the user has ANY active plan'));
+  assert.ok(BRIEF_SYSTEM_PROMPT.includes("OMIT this"));
   assert.ok(BRIEF_SYSTEM_PROMPT.includes("Calendar's clear"));
   assert.equal(BRIEF_TOOL.name, "emit_brief");
 });
