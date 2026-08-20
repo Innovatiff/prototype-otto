@@ -147,26 +147,26 @@ struct ConversationView: View {
         .multilineTextAlignment(.center)
     }
 
-    /// The orb holds center stage until a card needs the room — the brief's
-    /// resting card, a plan card, or a data chapter of the spoken tour.
+    /// The orb holds center stage until an illustration needs the room —
+    /// the brief's resting card, a plan card, or a visual tour chapter.
     private var orbIsBig: Bool {
-        model.briefCard == nil && model.planCard == nil && !tourDataChapterActive
+        model.briefCard == nil && model.planCard == nil && !tourVisualActive
     }
 
-    /// Hero chapters (intro/outro) are pure animated type under a big orb;
-    /// data chapters shrink the orb and take the room.
-    private var tourDataChapterActive: Bool {
+    private var tourVisualActive: Bool {
         guard let chapter = model.briefChapter else { return false }
-        return !chapter.kind.isHero
+        return chapter.kind.hasVisual
     }
 
-    /// The tour's stage slot: each chapter's visual slides in from the
-    /// right while the previous slides out to the left, in step with the
-    /// speech. Every chapter has a visual — cards for data, animated type
-    /// for the intro and outro.
+    /// The tour's stage slot: each chapter's illustration slides in from
+    /// the right while the previous slides out to the left, in step with
+    /// the speech. Intro and outro leave the slot empty — the orb alone
+    /// carries those moments.
     private var tourSlide: some View {
         ZStack {
-            if let chapter = model.briefChapter, let tour = model.briefTourCard {
+            if let chapter = model.briefChapter, let tour = model.briefTourCard,
+                chapter.kind.hasVisual
+            {
                 BriefChapterCardView(chapter: chapter, card: tour) {
                     model.startTourPlanSession()
                 }

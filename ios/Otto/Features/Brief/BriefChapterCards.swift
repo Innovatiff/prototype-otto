@@ -1,15 +1,19 @@
 import SwiftUI
 
-/// The synced tour's visuals: every topic Otto speaks has a matching visual
-/// on stage — animated type for the intro and outro, a chrome-less weather
-/// composition, cards for the calendar, today's plan sessions, and
-/// reminders. Each visual is ALIVE while he talks: the spoken words sweep
-/// through in a karaoke highlight, rows cascade in, icons float and sway,
-/// the temperature counts up. Empty chapters show their emptiness kindly;
-/// the words say the same.
+/// The synced tour's visuals: while Otto speaks each chapter of the brief,
+/// the matching illustration is on stage — no transcript, no captions, just
+/// the thing he's talking about, alive. Weather floats and counts up,
+/// calendar rows cascade in, the plan's illustration sways, reminders ring
+/// in one by one. Intro and outro are orb-only: Otto talking IS the visual.
 extension BriefChapterKind {
-    /// Hero chapters are pure animated type — the orb keeps the stage.
-    var isHero: Bool { self == .intro || self == .outro }
+    /// Chapters that put an illustration on stage. Intro and outro leave
+    /// the slot empty and the orb big.
+    var hasVisual: Bool {
+        switch self {
+        case .weather, .calendar, .plans, .reminders: return true
+        case .intro, .outro: return false
+        }
+    }
 }
 
 struct BriefChapterCardView: View {
@@ -19,62 +23,26 @@ struct BriefChapterCardView: View {
 
     var body: some View {
         switch chapter.kind {
-        case .intro:
-            HeroChapterView(text: chapter.spoken, tint: OttoTheme.sky)
-        case .outro:
-            HeroChapterView(text: chapter.spoken, tint: OttoTheme.lavender)
         case .weather:
-            WeatherChapterView(weather: card.weather, spoken: chapter.spoken)
+            WeatherChapterView(weather: card.weather)
         case .calendar:
-            CalendarChapterCard(
-                events: card.events,
-                conflicts: card.conflicts,
-                spoken: chapter.spoken
-            )
+            CalendarChapterCard(events: card.events, conflicts: card.conflicts)
         case .plans:
-            PlansChapterCard(
-                sessions: card.planSessions ?? [],
-                spoken: chapter.spoken,
-                onStart: onStartPlan
-            )
+            PlansChapterCard(sessions: card.planSessions ?? [], onStart: onStartPlan)
         case .reminders:
-            RemindersChapterCard(
-                dueTasks: card.dueTasks,
-                lists: card.lists,
-                spoken: chapter.spoken
-            )
+            RemindersChapterCard(dueTasks: card.dueTasks, lists: card.lists)
+        case .intro, .outro:
+            EmptyView()
         }
-    }
-}
-
-// MARK: - Hero (intro / outro)
-
-/// Not a card at all: the spoken line as big centered type, words lighting
-/// up as they're said.
-private struct HeroChapterView: View {
-    let text: String
-    let tint: Color
-
-    var body: some View {
-        KaraokeText(
-            text: text,
-            tint: tint,
-            font: .system(size: 25, weight: .semibold, design: .rounded),
-            baseColor: OttoTheme.textPrimary,
-            centered: true
-        )
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity)
     }
 }
 
 // MARK: - Weather
 
-/// Chrome-less: a floating condition icon, the temperature counting up,
-/// detail chips cascading in, and the advice line sweeping word by word.
+/// Chrome-less: a living condition icon (the sun turns, everything else
+/// drifts), the temperature counting up, detail chips cascading in.
 private struct WeatherChapterView: View {
     let weather: CurrentWeather?
-    let spoken: String
 
     /// The advice decides the face — rain beats cold beats wind.
     private var art: (symbol: String, tint: Color) {
@@ -86,14 +54,13 @@ private struct WeatherChapterView: View {
     }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 18) {
             if let weather {
-                HStack(spacing: 18) {
-                    IconTile(symbol: art.symbol, tint: art.tint, side: 76, glyph: 34)
-                        .floaty()
+                HStack(spacing: 20) {
+                    weatherIcon
                     VStack(alignment: .leading, spacing: 0) {
                         CountUpDegrees(value: Int(weather.temperatureC.rounded()))
-                            .font(.system(size: 58, weight: .bold, design: .rounded))
+                            .font(.system(size: 64, weight: .bold, design: .rounded))
                             .foregroundStyle(OttoTheme.textPrimary)
                         Text("Feels like \(Int(weather.apparentC.rounded()))°")
                             .font(.subheadline.weight(.medium))
@@ -117,19 +84,21 @@ private struct WeatherChapterView: View {
                     .staggerIn(1)
                 }
             } else {
-                IconTile(symbol: "cloud", tint: OttoTheme.sky, side: 64, glyph: 28)
-                    .floaty()
+                ChapterEmptyState(symbol: "cloud", tint: OttoTheme.sky, title: "No weather right now")
             }
-            KaraokeText(
-                text: spoken,
-                tint: art.tint,
-                font: .system(size: 16, weight: .medium, design: .rounded),
-                baseColor: OttoTheme.textSecondary,
-                centered: true
-            )
-            .padding(.horizontal, 8)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// The sun rotates forever; every other condition drifts gently.
+    @ViewBuilder
+    private var weatherIcon: some View {
+        let tile = IconTile(symbol: art.symbol, tint: art.tint, side: 84, glyph: 38)
+        if art.symbol == "sun.max.fill" {
+            tile.spinSlow()
+        } else {
+            tile.floaty()
+        }
     }
 }
 
@@ -138,7 +107,6 @@ private struct WeatherChapterView: View {
 private struct CalendarChapterCard: View {
     let events: [CalendarEvent]
     let conflicts: [Conflict]
-    let spoken: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -155,7 +123,7 @@ private struct CalendarChapterCard: View {
                         .staggerIn(0)
                 }
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(Array(events.prefix(4).enumerated()), id: \.element.id) { index, event in
+                    ForEach(Array(events.prefix(5).enumerated()), id: \.element.id) { index, event in
                         HStack(alignment: .firstTextBaseline, spacing: 12) {
                             Text(
                                 event.isAllDay
@@ -183,15 +151,14 @@ private struct CalendarChapterCard: View {
                         }
                         .staggerIn(index + 1)
                     }
-                    if events.count > 4 {
-                        Text("+ \(events.count - 4) more")
+                    if events.count > 5 {
+                        Text("+ \(events.count - 5) more")
                             .font(.caption2)
                             .foregroundStyle(OttoTheme.textTertiary)
-                            .staggerIn(5)
+                            .staggerIn(6)
                     }
                 }
             }
-            SpokenFooter(text: spoken, tint: OttoTheme.sky)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .ottoCard()
@@ -236,7 +203,6 @@ private struct ConflictBanner: View {
 /// done sessions wear a checkmark, and the next one is a tap away.
 private struct PlansChapterCard: View {
     let sessions: [BriefPlanSession]
-    let spoken: String
     var onStart: (() -> Void)?
 
     var body: some View {
@@ -257,12 +223,12 @@ private struct PlansChapterCard: View {
                         HStack(spacing: 14) {
                             StepIllustration(
                                 art: StepArt.art(for: session.sessionTitle, domain: session.domain),
-                                size: 56
+                                size: 60
                             )
                             .sway()
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(session.sessionTitle)
-                                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                                    .font(.system(size: 21, weight: .bold, design: .rounded))
                                     .foregroundStyle(OttoTheme.textPrimary)
                                     .lineLimit(1)
                                 Text(sessionSubtitle(session))
@@ -274,7 +240,6 @@ private struct PlansChapterCard: View {
                                 Image(systemName: "checkmark.seal.fill")
                                     .font(.system(size: 22, weight: .semibold))
                                     .foregroundStyle(OttoTheme.mint)
-                                    .transition(.scale.combined(with: .opacity))
                             }
                         }
                         .staggerIn(index)
@@ -292,7 +257,6 @@ private struct PlansChapterCard: View {
                     .staggerIn(2)
                 }
             }
-            SpokenFooter(text: spoken, tint: OttoTheme.rose)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .ottoCard()
@@ -315,7 +279,6 @@ private struct PlansChapterCard: View {
 private struct RemindersChapterCard: View {
     let dueTasks: [BriefDueTask]
     let lists: [BriefListCount]
-    let spoken: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -360,140 +323,9 @@ private struct RemindersChapterCard: View {
                     }
                 }
             }
-            SpokenFooter(text: spoken, tint: OttoTheme.lavender)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .ottoCard()
-    }
-}
-
-// MARK: - Karaoke text
-
-/// The spoken words on screen, lighting up in a steady sweep that tracks
-/// the voice: said words in full color, the word being said tinted and
-/// popped a touch larger, unsaid words faint. The sweep is estimated from
-/// speech cadence — no TTS timings exist — and lands close enough to feel
-/// synced.
-struct KaraokeText: View {
-    let text: String
-    var tint: Color = OttoTheme.sky
-    var font: Font = .system(size: 16, weight: .medium, design: .rounded)
-    var baseColor: Color = OttoTheme.textPrimary
-    var centered = false
-    /// Roughly conversational TTS pace (~170 words per minute).
-    var wordInterval: Double = 0.36
-
-    @State private var revealed = 0
-
-    private var words: [String] {
-        text.split(whereSeparator: \.isWhitespace).map(String.init)
-    }
-
-    var body: some View {
-        FlowLayout(spacing: 5, lineSpacing: 6, centered: centered) {
-            ForEach(Array(words.enumerated()), id: \.offset) { index, word in
-                Text(word)
-                    .font(font)
-                    .foregroundStyle(index == revealed - 1 ? tint : baseColor)
-                    .opacity(index < revealed ? 1 : 0.22)
-                    .scaleEffect(
-                        index == revealed - 1 ? 1.12 : (index < revealed ? 1.0 : 0.96)
-                    )
-                    .animation(.spring(duration: 0.3, bounce: 0.35), value: revealed)
-            }
-        }
-        .task {
-            for index in words.indices {
-                try? await Task.sleep(for: .seconds(index == 0 ? 0.2 : wordInterval))
-                if Task.isCancelled { return }
-                revealed = index + 1
-            }
-        }
-    }
-}
-
-/// The chapter's sentence at the foot of a card, sweeping as it's said.
-private struct SpokenFooter: View {
-    let text: String
-    let tint: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Rectangle()
-                .fill(OttoTheme.hairline)
-                .frame(height: 1)
-            KaraokeText(
-                text: text,
-                tint: tint,
-                font: .system(size: 15, weight: .medium, design: .rounded),
-                baseColor: OttoTheme.textSecondary
-            )
-        }
-    }
-}
-
-/// Leading-or-centered wrapping rows of word views — Text concatenation
-/// can't scale a single word, so each word is its own view.
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 5
-    var lineSpacing: CGFloat = 6
-    var centered = false
-
-    private struct Arrangement {
-        var frames: [CGRect] = []
-        var rowOf: [Int] = []
-        var rowWidths: [CGFloat] = []
-        var size: CGSize = .zero
-    }
-
-    private func arrange(width maxWidth: CGFloat, subviews: Subviews) -> Arrangement {
-        var result = Arrangement()
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var row = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > maxWidth {
-                result.rowWidths.append(x - spacing)
-                x = 0
-                y += rowHeight + lineSpacing
-                rowHeight = 0
-                row += 1
-            }
-            result.frames.append(CGRect(x: x, y: y, width: size.width, height: size.height))
-            result.rowOf.append(row)
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        result.rowWidths.append(max(0, x - spacing))
-        let contentWidth = result.rowWidths.max() ?? 0
-        result.size = CGSize(
-            width: maxWidth.isFinite ? min(contentWidth, maxWidth) : contentWidth,
-            height: y + rowHeight
-        )
-        return result
-    }
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        arrange(width: proposal.width ?? .infinity, subviews: subviews).size
-    }
-
-    func placeSubviews(
-        in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
-    ) {
-        let arrangement = arrange(width: bounds.width, subviews: subviews)
-        for (index, subview) in subviews.enumerated() {
-            let frame = arrangement.frames[index]
-            let shift =
-                centered
-                ? (arrangement.size.width - arrangement.rowWidths[arrangement.rowOf[index]]) / 2
-                : 0
-            subview.place(
-                at: CGPoint(x: bounds.minX + frame.minX + shift, y: bounds.minY + frame.minY),
-                proposal: ProposedViewSize(frame.size)
-            )
-        }
     }
 }
 
@@ -548,10 +380,26 @@ private struct Sway: ViewModifier {
     }
 }
 
+/// A full slow turn, forever — the sun doing sun things.
+private struct SpinSlow: ViewModifier {
+    @State private var turned = false
+
+    func body(content: Content) -> some View {
+        content
+            .rotationEffect(.degrees(turned ? 360 : 0))
+            .onAppear {
+                withAnimation(.linear(duration: 22).repeatForever(autoreverses: false)) {
+                    turned = true
+                }
+            }
+    }
+}
+
 extension View {
     fileprivate func staggerIn(_ index: Int) -> some View { modifier(StaggerIn(index: index)) }
     fileprivate func floaty() -> some View { modifier(Floaty()) }
     fileprivate func sway() -> some View { modifier(Sway()) }
+    fileprivate func spinSlow() -> some View { modifier(SpinSlow()) }
 }
 
 /// The temperature rolling up from zero on arrival.
@@ -621,8 +469,7 @@ private struct ChapterChip: View {
     }
 }
 
-/// An empty chapter states its emptiness with a scaled-in tile; the
-/// karaoke footer speaks the kind line.
+/// An empty chapter states its emptiness with a scaled-in tile.
 private struct ChapterEmptyState: View {
     let symbol: String
     let tint: Color
