@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import {
+  fallbackModel,
   PCC_CONTEXT_CEILING,
   TIER_MODELS,
   estimateTokens,
@@ -43,7 +44,8 @@ test("the PCC ceiling is a hard gate at exactly 24000", () => {
 });
 
 test("small non-local turns default to pcc", () => {
-  assert.equal(selectTier(input({ intent: "capture", contextTokens: 500 })), "pcc");
+  // capture moved into the local (margin-gate) set in Phase 7.
+  assert.equal(selectTier(input({ intent: "question", contextTokens: 500 })), "pcc");
   assert.equal(selectTier(input({ intent: "unknown", contextTokens: 12 })), "pcc");
 });
 
@@ -58,4 +60,26 @@ test("estimateTokens approximates 4 chars per token, rounding up", () => {
   assert.equal(estimateTokens(""), 0);
   assert.equal(estimateTokens("abcd"), 1);
   assert.equal(estimateTokens("abcde"), 2);
+});
+
+test("the margin gate: mechanical intents route local and serve on haiku", () => {
+  const intents = [
+    "list_add", "list_query", "check_item", "complete_task", "time_query",
+    "date_query", "simple_ack", "reminder_create", "weather_query",
+    "calendar_lookup", "guidance_command", "capture",
+  ];
+  for (const intent of intents) {
+    const tier = selectTier({
+      intent,
+      utteranceLength: 30,
+      requiresMemory: false,
+      requiresMultiStep: false,
+      contextTokens: 2000,
+    });
+    assert.equal(tier, "local", `${intent} must never reach sonnet`);
+    assert.equal(fallbackModel(tier), "claude-haiku-4-5");
+  }
+  // General conversation keeps sonnet quality on the pcc fallback.
+  assert.equal(fallbackModel("pcc"), "claude-sonnet-5");
+  assert.equal(fallbackModel("opus"), "claude-opus-5");
 });

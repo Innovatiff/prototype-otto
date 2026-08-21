@@ -30,6 +30,7 @@ export const DELETION_SPECS: readonly DeletionSpec[] = [
   { collection: COLLECTIONS.sessionRecords, field: "ownerId" },
   { collection: COLLECTIONS.automations, field: "ownerId" },
   { collection: COLLECTIONS.deliveries, field: "ownerId" },
+  { collection: COLLECTIONS.moderationReports, field: "ownerId" },
   { collection: COLLECTIONS.costEvents, field: "userId" },
   { collection: COLLECTIONS.costDaily, idPrefix: "uid_" },
   { collection: COLLECTIONS.calendarViews, docId: "uid" },

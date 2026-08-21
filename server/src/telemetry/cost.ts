@@ -34,6 +34,12 @@ export interface CostEventInput {
   cacheReadTokens: number;
   cacheCreationTokens: number;
   latencyMs: number;
+  /**
+   * Plan-generation attempts beyond the first (0 = clean). A retried plan
+   * costs ~2x; the daily rollup tracks the rate so a drifting generation
+   * prompt gets fixed, not absorbed.
+   */
+  retryCount?: number;
 }
 
 /**
@@ -106,6 +112,7 @@ export async function recordCostEvent(event: CostEventInput): Promise<void> {
       estimatedCostUsd,
       timestamp: Timestamp.fromDate(now),
     });
+    const isConverse = event.purpose === "converse";
     batch.set(
       dailyRef,
       {
@@ -116,13 +123,40 @@ export async function recordCostEvent(event: CostEventInput): Promise<void> {
         byTier: {
           local: FieldValue.increment(event.tier === "local" ? 1 : 0),
           pcc: FieldValue.increment(event.tier === "pcc" ? 1 : 0),
+          haiku: FieldValue.increment(event.tier === "haiku" ? 1 : 0),
           sonnet: FieldValue.increment(event.tier === "sonnet" ? 1 : 0),
           opus: FieldValue.increment(event.tier === "opus" ? 1 : 0),
         },
+        // The margin gauges: sonnet share of conversation, and plan retries.
+        converseTurns: FieldValue.increment(isConverse ? 1 : 0),
+        converseSonnetTurns: FieldValue.increment(
+          isConverse && event.tier === "sonnet" ? 1 : 0,
+        ),
+        planRetries: FieldValue.increment(event.retryCount ?? 0),
       },
       { merge: true },
     );
     await batch.commit();
+
+    // The routing gate's alarm: if most of a user's conversation still
+    // lands on sonnet, the classifier is under-matching.
+    if (isConverse) {
+      const daily = await dailyRef.get();
+      const data = daily.data() as
+        | { converseTurns?: number; converseSonnetTurns?: number }
+        | undefined;
+      const turns = data?.converseTurns ?? 0;
+      const sonnetTurns = data?.converseSonnetTurns ?? 0;
+      if (turns >= 20 && sonnetTurns / turns > 0.5) {
+        logWarning("sonnet_share_high", {
+          userId: event.userId,
+          date,
+          turns,
+          sonnetTurns,
+          share: Math.round((sonnetTurns / turns) * 100) / 100,
+        });
+      }
+    }
   } catch (err) {
     logError("cost_event_write_failed", {
       userId: event.userId,

@@ -78,6 +78,11 @@ export const TurnEventType = z.enum([
    * calendar, reminders, plans, a build in progress, an armed automation.
    */
   "stage",
+  /**
+   * A gate fired: { feature, requiredTier, used?, allowance? }. The client
+   * shows a contextual upsell about THAT feature, never a generic wall.
+   */
+  "entitlement",
   "done",
   "error",
 ]);

@@ -158,6 +158,68 @@ export async function recordPlanCreation(uid: string, now: Date): Promise<number
   });
 }
 
+// ── The Phase 7 meter: billing-anniversary periods, enforced ────────
+
+export interface PlanMeter {
+  count: number;
+  periodKey: string;
+  /** The 80% heads-up was already spoken this period. */
+  mentioned: boolean;
+}
+
+/** The meter as it stands — the pre-generation cap check reads this. */
+export async function loadPlanMeter(
+  meterUid: string,
+  periodKey: string,
+): Promise<PlanMeter> {
+  const snapshot = await db().collection(COLLECTIONS.users).doc(meterUid).get();
+  const data = snapshot.data() ?? {};
+  const samePeriod = data["plansPeriodKey"] === periodKey;
+  const raw = data["plansCreatedThisPeriod"];
+  const count =
+    samePeriod && typeof raw === "number" && Number.isFinite(raw)
+      ? Math.max(0, Math.floor(raw))
+      : 0;
+  return {
+    count,
+    periodKey,
+    mentioned: samePeriod && data["planMeterMentionedPeriod"] === periodKey,
+  };
+}
+
+/** Transactionally counts one creation in the billing period. */
+export async function recordPlanCreationInPeriod(
+  meterUid: string,
+  periodKey: string,
+): Promise<number> {
+  const ref = db().collection(COLLECTIONS.users).doc(meterUid);
+  return await db().runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    const data = snapshot.data() ?? {};
+    const count = nextMeterValue(
+      { month: data["plansPeriodKey"], count: data["plansCreatedThisPeriod"] },
+      periodKey,
+    );
+    tx.set(
+      ref,
+      { plansCreatedThisPeriod: count, plansPeriodKey: periodKey },
+      { merge: true },
+    );
+    return count;
+  });
+}
+
+/** The 80% heads-up fires once per period; this stamps it spoken. */
+export async function markPlanMeterMentioned(
+  meterUid: string,
+  periodKey: string,
+): Promise<void> {
+  await db()
+    .collection(COLLECTIONS.users)
+    .doc(meterUid)
+    .set({ planMeterMentionedPeriod: periodKey }, { merge: true });
+}
+
 /** 1-indexed week the user is in, clamped to the plan's span. */
 export function planWeek(plan: Plan, now: Date): number {
   const elapsedDays = Math.floor(

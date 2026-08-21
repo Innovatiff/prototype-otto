@@ -9,7 +9,7 @@
  */
 import { logInfo } from "../log.js";
 
-export type Tier = "local" | "pcc" | "sonnet" | "opus";
+export type Tier = "local" | "pcc" | "haiku" | "sonnet" | "opus";
 
 export interface RouteInput {
   intent: string;
@@ -25,12 +25,25 @@ export interface RouteInput {
  */
 export const PCC_CONTEXT_CEILING = 24_000;
 
-/** Structured, low-stakes intents that on-device handling covers entirely. */
+/**
+ * Structured, low-stakes intents that must NEVER reach sonnet — conversation
+ * is the dominant cost, and these are mechanical. On-device handling covers
+ * them eventually; until then the server answers them on haiku (see
+ * fallbackModel). This set is the margin gate: keep it aggressive.
+ */
 const LOCAL_INTENTS: ReadonlySet<string> = new Set([
   "list_add",
   "list_query",
   "check_item",
+  "complete_task",
   "time_query",
+  "date_query",
+  "simple_ack",
+  "reminder_create",
+  "weather_query",
+  "calendar_lookup",
+  "guidance_command",
+  "capture",
 ]);
 
 /**
@@ -46,9 +59,30 @@ const DRAFTING_INTENTS: ReadonlySet<string> = new Set(["message_draft"]);
 export const TIER_MODELS = {
   local: null,
   pcc: null,
+  haiku: "claude-haiku-4-5",
   sonnet: "claude-sonnet-5",
   opus: "claude-opus-5",
 } as const satisfies Readonly<Record<Tier, string | null>>;
+
+/**
+ * What actually serves a tier TODAY. local's on-device path doesn't exist
+ * yet, so its turns answer on haiku — cheap and entirely capable of "add
+ * milk to the list". pcc turns are general conversation and keep sonnet
+ * quality until Private Cloud Compute lands. The routed tier is still
+ * logged and recorded, so the intended mix stays visible in telemetry.
+ */
+export function fallbackModel(tier: Tier): string {
+  switch (tier) {
+    case "local":
+    case "haiku":
+      return TIER_MODELS.haiku;
+    case "pcc":
+    case "sonnet":
+      return TIER_MODELS.sonnet;
+    case "opus":
+      return TIER_MODELS.opus;
+  }
+}
 
 export function selectTier(i: RouteInput): Tier {
   // Multi-step work (plan generation) is the only thing that justifies opus,

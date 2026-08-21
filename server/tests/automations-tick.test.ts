@@ -57,6 +57,7 @@ function makeDeps(
     quiet?: { start: string; end: string };
     ownerDeliveries?: DeliveryRecord[];
     automationDeliveries?: Map<string, DeliveryRecord[]>;
+    ownerGate?: { tier: string; hasConsent: boolean };
   } = {},
 ): { deps: TickDeps; journal: Journal } {
   const journal: Journal = { executed: [], completed: new Map(), notices: [], disabled: [] };
@@ -85,6 +86,8 @@ function makeDeps(
     loadView: () => Promise.resolve(options.view ?? null),
     purgeViews: () => Promise.resolve(0),
     loadQuietHours: () => Promise.resolve(options.quiet ?? { start: "22:00", end: "07:00" }),
+    loadOwnerGate: () =>
+      Promise.resolve(options.ownerGate ?? { tier: "max", hasConsent: true }),
     loadOwnerDeliveries: () => Promise.resolve(options.ownerDeliveries ?? []),
     loadAutomationDeliveries: (_ownerId, automationId) =>
       Promise.resolve(options.automationDeliveries?.get(automationId) ?? []),
@@ -471,4 +474,28 @@ test("only the configured invoker's VERIFIED email is authorized", () => {
   );
   assert.equal(isAuthorizedInvoker(payload({}), config), false);
   assert.equal(isAuthorizedInvoker(undefined, config), false);
+});
+
+// ── Phase 7 owner gates ─────────────────────────────────────────────
+
+test("no AI consent silences every automation without disabling it", async () => {
+  const { deps, journal } = makeDeps([automation("a1")], {
+    ownerGate: { tier: "max", hasConsent: false },
+  });
+  const summary = await runTick(deps);
+  assert.equal(summary.suppressed, 1);
+  assert.deepEqual(journal.executed, []);
+  assert.equal(journal.completed.get("a1")?.lastResult, "suppressed");
+});
+
+test("meeting prep stays quiet below Pro and runs at Pro", async () => {
+  const prep = automation("a1", { type: "meeting_prep" });
+  const onLite = makeDeps([prep], { ownerGate: { tier: "lite", hasConsent: true } });
+  await runTick(onLite.deps);
+  assert.deepEqual(onLite.journal.executed, []);
+
+  const prepAgain = automation("a1", { type: "meeting_prep" });
+  const onPro = makeDeps([prepAgain], { ownerGate: { tier: "pro", hasConsent: true } });
+  await runTick(onPro.deps);
+  assert.deepEqual(onPro.journal.executed, ["a1"]);
 });

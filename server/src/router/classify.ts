@@ -10,10 +10,15 @@ export const INTENTS = [
   "list_add",
   "list_query",
   "check_item",
+  "complete_task",
   "reminder_create",
   "message_draft",
   "capture",
   "time_query",
+  "date_query",
+  "simple_ack",
+  "weather_query",
+  "calendar_lookup",
   "question",
   "plan_request",
   "unknown",
@@ -97,6 +102,56 @@ const RULES: readonly Rule[] = [
       /\bnote to self\b/,
       /\bcapture\b/,
       /\bremember that\b/,
+    ],
+  },
+  {
+    // "I'm done with the report" / "finished the workout" — task closure.
+    intent: "complete_task",
+    patterns: [
+      /\b(?:i'?m|i am) (?:done|finished) with\b/,
+      /\b(?:finished|completed) (?:the|my|that)\b/,
+      /\bmark (?:the |my |that )?task[\s\S]{0,20}\b(?:done|complete)\b/,
+    ],
+  },
+  {
+    // Before question's what-catch-all: the answer is already in the
+    // dynamic context — this must never cost a sonnet turn.
+    intent: "weather_query",
+    patterns: [
+      /\bweather\b/,
+      /\bforecast\b/,
+      /\b(?:is it|will it) (?:going to |gonna )?(?:rain|snow)\b/,
+      /\bhow (?:hot|cold|warm) is it\b/,
+      /\b(?:temperature|degrees) (?:outside|today|out)\b/,
+    ],
+  },
+  {
+    // Schedule questions answer from the CALENDAR context block.
+    intent: "calendar_lookup",
+    patterns: [
+      /\bwhat(?:'?s| is) on (?:my|the) (?:calendar|schedule|agenda)\b/,
+      /\bam i free\b/,
+      /\bmy (?:next|first) (?:meeting|appointment|event)\b/,
+      /\bdo i have (?:any(?:thing)?|meetings|appointments|plans)\b/,
+      /\bhow(?:'?s| is) my (?:day|schedule|calendar|week) look/,
+      /\bwhat(?:'?s| does) my (?:day|schedule|week) look/,
+    ],
+  },
+  {
+    intent: "date_query",
+    patterns: [
+      /\bwhat(?:'?s| is) (?:the date|today'?s date)\b/,
+      /\bwhat (?:day|date) is (?:it|today|tomorrow)\b/,
+      /\bwhat month is\b/,
+    ],
+  },
+  {
+    // Bare acknowledgments — never worth a frontier model. Anchored to the
+    // WHOLE utterance so "thanks, and also…" falls through to the real
+    // intent behind it.
+    intent: "simple_ack",
+    patterns: [
+      /^(?:ok(?:ay)?|k|sure|yes|yep|yeah|no|nope|nah|thanks|thank you|thanks otto|got it|sounds good|perfect|great|cool|nice|alright|all right|never ?mind|stop|cancel)[.!]?$/,
     ],
   },
   {

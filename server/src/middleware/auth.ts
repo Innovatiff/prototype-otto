@@ -15,6 +15,8 @@ declare global {
     interface Request {
       /** Firebase uid of the authenticated caller. Set by `requireAuth`. */
       uid?: string;
+      /** The token's email (lowercased), when present — seat resolution. */
+      userEmail?: string;
     }
   }
 }
@@ -35,6 +37,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   try {
     const decoded = await firebaseAuth().verifyIdToken(token);
     req.uid = decoded.uid;
+    req.userEmail = typeof decoded.email === "string" ? decoded.email.toLowerCase() : undefined;
     next();
   } catch {
     // Never echo verification internals (or the token) back to the client.

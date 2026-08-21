@@ -54,6 +54,8 @@ import {
 import { AppError, IdParam, parseOrThrow } from "../errors.js";
 import { errorFields, logError, logInfo } from "../log.js";
 import { requireUid } from "../middleware/auth.js";
+import { tierFromProfile } from "../entitlements/index.js";
+import { loadUserProfile } from "../users/index.js";
 import { registerDeviceToken } from "../automations/push.js";
 
 export interface SchedulerConfig {
@@ -315,6 +317,15 @@ automationsTickRouter.post(
         loadView: loadCalendarView,
         purgeViews: purgeExpiredViews,
         loadQuietHours: loadOwnerQuietHours,
+        loadOwnerGate: async (ownerId) => {
+          // Own tier only here: seat members' Pro automations are a known
+          // v1 limitation (the tick has no email to resolve seats with).
+          const profile = await loadUserProfile(ownerId, new Date());
+          return {
+            tier: tierFromProfile(profile, new Date()),
+            hasConsent: profile.aiConsentVersion !== undefined,
+          };
+        },
         loadOwnerDeliveries: (ownerId) => loadOwnerDeliveries(ownerId),
         // 15 leaves headroom: the streak needs five COUNTABLE sends among
         // these after fresh and never-sent records are filtered out.

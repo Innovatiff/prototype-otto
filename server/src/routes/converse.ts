@@ -11,18 +11,20 @@ import { TurnRequest } from "@otto/shared";
 import type { TurnEvent } from "@otto/shared";
 
 import { AppError, parseOrThrow } from "../errors.js";
+import { COLLECTIONS, db } from "../firestore.js";
 import { streamAssistantTurn, type LlmMessage, type LlmTurnResult } from "../llm/anthropic.js";
-import { errorFields, logError, logInfo } from "../log.js";
+import { errorFields, logError, logInfo, logWarning } from "../log.js";
 import { extractMemories } from "../memory/extract.js";
 import { retrieveMemories } from "../memory/retrieve.js";
 import { requireUid } from "../middleware/auth.js";
 import { addressTermAllowed, buildSystemPrompt } from "../persona/system.js";
 import { loadActivePlans } from "../plans/store.js";
 import { classify } from "../router/classify.js";
-import { estimateTokens, route, TIER_MODELS, type RouteInput } from "../router/selectModel.js";
+import { estimateTokens, fallbackModel, route, type RouteInput } from "../router/selectModel.js";
 import { cachedCurrentWeather } from "../services/weather/index.js";
 import { appendExchange, loadOrCreateSession } from "../sessions/index.js";
 import { recordCostEvent } from "../telemetry/cost.js";
+import { resolveEntitled } from "../entitlements/index.js";
 import { executeToolUse, loadTasks } from "../tools/execute.js";
 import { loadUserProfile } from "../users/index.js";
 
@@ -120,6 +122,23 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     ...(turn.guidance !== undefined ? { guidance: turn.guidance } : {}),
   });
 
+  // The server-authoritative tier (seats resolved) rides into every tool
+  // gate; the fair-use counter ticks fire-and-forget.
+  const entitled = await resolveEntitled(user, uid, req.userEmail ?? null, now);
+  {
+    const monthKey = now.toISOString().slice(0, 7);
+    const turns = user.turnsMonthKey === monthKey ? (user.turnsThisMonth ?? 0) + 1 : 1;
+    void db()
+      .collection(COLLECTIONS.users)
+      .doc(uid)
+      .set({ turnsMonthKey: monthKey, turnsThisMonth: turns }, { merge: true })
+      .catch(() => {});
+    // Internal anomaly signal only — never surfaced, never capped.
+    if (turns >= 3000 && turns % 250 === 0) {
+      logWarning("fair_use_flag", { userId: uid, monthKey, turns });
+    }
+  }
+
   const intent = classify(text);
   const routeInput: RouteInput = {
     intent,
@@ -131,10 +150,9 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     contextTokens: messages.reduce((sum, m) => sum + estimateTokens(m.content), 0),
   };
   const decision = route(routeInput, { turnId: turn.turnId, userId: uid });
-  // local and pcc run on-device in a later phase. Until that path exists the
-  // server answers those turns with sonnet; the routed tier is still logged
-  // and recorded, so the intended mix stays visible in telemetry.
-  const model = decision.model ?? TIER_MODELS.sonnet;
+  // The margin gate: mechanical turns (local tier) answer on haiku, general
+  // conversation (pcc) keeps sonnet quality until on-device paths exist.
+  const model = fallbackModel(decision.tier);
 
   res.status(200);
   res.setHeader("Content-Type", "text/event-stream");
@@ -189,6 +207,7 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
               turnId: turn.turnId,
               now: new Date(),
               timezone: turn.timezone,
+              entitled,
               emit: (event): void => {
                 if (!sink.closed) {
                   sink.write(sseMessage(event));
@@ -211,6 +230,12 @@ converseRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     // the user heard part of it, so context-wise it happened. A turn that
     // produced no text at all is not remembered (and an empty assistant
     // message would be rejected by the API on the next call anyway).
+    // Moderation visibility: refusals are logged for review, so the
+    // boundary rules stay observable rather than assumed.
+    if (/\b(?:i can'?t help with|i won'?t help with|not something i can help)\b/i.test(assistantText)) {
+      logInfo("model_refusal", { userId: uid, turnId: turn.turnId });
+    }
+
     if (assistantText.trim().length > 0) {
       await appendExchange({
         session,

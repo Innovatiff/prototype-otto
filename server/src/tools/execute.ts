@@ -54,10 +54,20 @@ import { generatePlan, PlanGenerationError } from "../plans/generate.js";
 import { PlanConstraints, PlanDomain } from "../plans/interview.js";
 import {
   loadActivePlan,
+  loadPlanMeter,
   loadSessionRecords,
-  recordPlanCreation,
+  markPlanMeterMentioned,
+  recordPlanCreationInPeriod,
   saveNewPlan,
 } from "../plans/store.js";
+import {
+  billingPeriodKey,
+  CUSTOM_AUTOMATION_ALLOWANCE,
+  PLAN_ALLOWANCE,
+  planCapLine,
+  tierAllows,
+  type Entitled,
+} from "../entitlements/index.js";
 import { summaryLine } from "../plans/summarize.js";
 import { cachedCurrentWeather, DEFAULT_LAT, DEFAULT_LON } from "../services/weather/index.js";
 import { setAddressTerm } from "../users/index.js";
@@ -246,6 +256,16 @@ export interface ToolContext {
   timezone: string;
   /** Emits a TurnEvent onto the SSE stream (no-op once the client is gone). */
   emit: (event: TurnEvent) => void;
+  /** The server-authoritative tier + meters for this caller. */
+  entitled: Entitled;
+}
+
+/** A gate fired: the model gets a refusal, the client gets an upsell. */
+function emitEntitlement(
+  ctx: ToolContext,
+  payload: { feature: string; requiredTier: string; used?: number; allowance?: number },
+): void {
+  ctx.emit({ type: "entitlement", data: payload });
 }
 
 function tasksCollection() {
@@ -447,6 +467,23 @@ function proposeCalendarMove(
  * yet; storage and versioning land with the store module.
  */
 async function generatePlanTool(input: PlanConstraints, ctx: ToolContext): Promise<ToolExecution> {
+  // The one hard meter: plans per billing period, on the METER owner
+  // (Max seats share the subscriber's allowance).
+  const allowance = PLAN_ALLOWANCE[ctx.entitled.tier];
+  const periodKey = billingPeriodKey(ctx.entitled.anchorAt, ctx.now);
+  const meter = await loadPlanMeter(ctx.entitled.meterUid, periodKey);
+  if (meter.count >= allowance) {
+    emitEntitlement(ctx, {
+      feature: "plans",
+      requiredTier: ctx.entitled.tier === "free" ? "lite" : ctx.entitled.tier === "lite" ? "pro" : "max",
+      used: meter.count,
+      allowance,
+    });
+    return failure(
+      `Plan allowance reached. Say exactly this, kindly: "${planCapLine(ctx.entitled.tier, allowance)}" ` +
+        "The upgrade card is on their screen; do not push.",
+    );
+  }
   // The screen shows the assembly the whole time generation runs.
   emitStage(ctx, { kind: "building", label: "Building your plan" });
   try {
@@ -463,8 +500,23 @@ async function generatePlanTool(input: PlanConstraints, ctx: ToolContext): Promi
     // Metering counts successful GENERATIONS only (adaptations never call
     // this) — and a metering hiccup must never fail a plan that saved.
     let plansCreatedThisMonth: number | null = null;
+    let headsUp = "";
     try {
-      plansCreatedThisMonth = await recordPlanCreation(ctx.uid, ctx.now);
+      plansCreatedThisMonth = await recordPlanCreationInPeriod(
+        ctx.entitled.meterUid,
+        periodKey,
+      );
+      // The 80% heads-up: once per period, conversational, numbers named.
+      if (
+        !meter.mentioned &&
+        plansCreatedThisMonth >= Math.ceil(allowance * 0.8) &&
+        plansCreatedThisMonth < allowance
+      ) {
+        await markPlanMeterMentioned(ctx.entitled.meterUid, periodKey);
+        headsUp =
+          ` Then mention, once and lightly: "That's plan ${plansCreatedThisMonth} of ` +
+          `${allowance} this month — ${allowance - plansCreatedThisMonth} left."`;
+      }
     } catch (err) {
       logWarning("plan_meter_failed", { userId: ctx.uid, ...errorFields(err) });
     }
@@ -479,7 +531,7 @@ async function generatePlanTool(input: PlanConstraints, ctx: ToolContext): Promi
           "what the timeframe delivers. The full plan is already on their " +
           "screen — never read the plan itself aloud. Do not offer to put " +
           "sessions on the calendar; the device makes that offer itself " +
-          "right after you finish.",
+          "right after you finish." + headsUp,
         ...(generated.riskSignals.length > 0
           ? {
               riskNote:
@@ -529,6 +581,15 @@ async function createExperienceTool(
   input: z.infer<typeof CreateExperienceInput>,
   ctx: ToolContext,
 ): Promise<ToolExecution> {
+  // Experiences are Pro and above — the strongest upgrade driver.
+  if (!tierAllows(ctx.entitled.tier, "experiences")) {
+    emitEntitlement(ctx, { feature: "experiences", requiredTier: "pro" });
+    return failure(
+      "Experiences (trips, dates, days out) are part of Pro. Say so in one " +
+        "warm sentence — the upgrade card is already on their screen. Offer " +
+        "a walkthrough or a plan as what you CAN do today.",
+    );
+  }
   const labels: Record<ExperienceKind, string> = {
     trip: "Planning your trip",
     date: "Planning your date",
@@ -803,9 +864,23 @@ async function createAutomationTool(
   input: CustomAutomationInput,
   ctx: ToolContext,
 ): Promise<ToolExecution> {
-  emitStage(ctx, { kind: "building", label: "Setting up the automation" });
   const existing = await loadOwnerAutomations(ctx.uid);
   const customCount = existing.filter((automation) => automation.type === "custom").length;
+  const automationAllowance = CUSTOM_AUTOMATION_ALLOWANCE[ctx.entitled.tier];
+  if (customCount >= automationAllowance) {
+    emitEntitlement(ctx, {
+      feature: "custom_automations",
+      requiredTier: "pro",
+      used: customCount,
+      allowance: automationAllowance,
+    });
+    return failure(
+      `Custom automation allowance reached (${customCount} of ${automationAllowance} on ` +
+        `${ctx.entitled.tier}). Say so in one kind sentence — Pro removes the cap. ` +
+        "The upgrade card is on their screen.",
+    );
+  }
+  emitStage(ctx, { kind: "building", label: "Setting up the automation" });
   const built = buildCustomAutomation(
     ctx.uid,
     ctx.timezone,

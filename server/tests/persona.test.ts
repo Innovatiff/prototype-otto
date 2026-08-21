@@ -55,6 +55,9 @@ test("the static prefix carries the identity block and never the clock", () => {
   assert.ok(prefix.includes("call show_visual first"));
   assert.ok(prefix.includes("build it with create_walkthrough"));
   assert.ok(prefix.includes("never guess a budget"));
+  assert.ok(prefix.includes("BOUNDARIES"));
+  assert.ok(prefix.includes("No medical diagnosis"));
+  assert.ok(prefix.includes("nothing age-inappropriate"));
   assert.ok(prefix.includes("THE THREE-BEAT RESPONSE"));
   assert.ok(prefix.includes("An assistant who ties every answer back to their goals is exhausting."));
   // The plan blocks ride the static (cached) prefix: interview rules and

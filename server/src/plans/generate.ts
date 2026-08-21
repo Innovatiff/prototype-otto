@@ -314,6 +314,7 @@ async function recordAttempt(
   turnId: string,
   usage: Anthropic.Usage,
   startedAt: number,
+  attempt: number,
 ): Promise<void> {
   await recordCostEvent({
     userId,
@@ -326,6 +327,9 @@ async function recordAttempt(
     cacheReadTokens: usage.cache_read_input_tokens ?? 0,
     cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
     latencyMs: Date.now() - startedAt,
+    // Attempt 2 is a retry — a ~$1.10 plan instead of ~$0.55. The daily
+    // rollup sums these; a rate above 5% means fix the prompt.
+    retryCount: attempt - 1,
   });
 }
 
@@ -371,7 +375,7 @@ export async function generatePlan(input: {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const startedAt = Date.now();
     const outcome = await runAttempt(messages, input.userId, input.onProgress ?? (() => {}));
-    await recordAttempt(input.userId, input.turnId, outcome.usage, startedAt);
+    await recordAttempt(input.userId, input.turnId, outcome.usage, startedAt, attempt);
 
     const result = validateGeneratedPlan(outcome.raw);
     const errors = result.ok

@@ -106,7 +106,9 @@ test("bad tool inputs are rejected, not coerced", () => {
 
 // ── The stage (show_visual) ─────────────────────────────────────────
 
-function stageContext(): { ctx: ToolContext; events: TurnEvent[] } {
+function stageContext(
+  tier: "free" | "lite" | "pro" | "max" = "max",
+): { ctx: ToolContext; events: TurnEvent[] } {
   const events: TurnEvent[] = [];
   return {
     events,
@@ -115,6 +117,7 @@ function stageContext(): { ctx: ToolContext; events: TurnEvent[] } {
       turnId: "t1",
       now: NOW,
       timezone: "America/Toronto",
+      entitled: { tier, meterUid: "u1", anchorAt: null, hasConsent: true },
       emit: (event: TurnEvent) => {
         events.push(event);
       },
@@ -162,4 +165,34 @@ test("stage visuals parse for every kind the server emits", () => {
     }).success,
   );
   assert.ok(!StageVisual.safeParse({ kind: "stocks" }).success);
+});
+
+// ── Entitlement gates (server refuses; the client only hides UI) ────
+
+test("a Lite user asking for an experience gets a typed refusal + upsell event", async () => {
+  const { ctx, events } = stageContext("lite");
+  const result = await executeToolUse(
+    "create_experience",
+    { kind: "trip", request: "plan a trip to panama for two people", budgetAmount: 2000 },
+    ctx,
+  );
+  assert.equal(result.isError, true);
+  assert.ok(result.result.includes("part of Pro"));
+  const gate = events.find((event) => event.type === "entitlement");
+  assert.ok(gate !== undefined);
+  assert.deepEqual(gate.data, { feature: "experiences", requiredTier: "pro" });
+});
+
+test("Pro passes the experience gate (and fails later only on real work)", async () => {
+  const { ctx, events } = stageContext("pro");
+  // No API key / Firestore in tests: the call will fail INSIDE generation,
+  // which proves the gate itself let it through.
+  const result = await executeToolUse(
+    "create_experience",
+    { kind: "date", request: "plan a romantic date downtown for friday", budgetAmount: 200 },
+    ctx,
+  );
+  assert.ok(!events.some((event) => event.type === "entitlement"));
+  assert.equal(result.isError, true);
+  assert.ok(!result.result.includes("part of Pro"));
 });

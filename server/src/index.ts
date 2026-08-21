@@ -13,6 +13,10 @@ import { errorFields, logError, logInfo } from "./log.js";
 import { requireAuth } from "./middleware/auth.js";
 import { accountRouter } from "./routes/account.js";
 import { automationsTickRouter, automationsUserRouter } from "./routes/automations.js";
+import { consentRouter } from "./routes/consent.js";
+import { moderationRouter } from "./routes/moderation.js";
+import { revenuecatRouter } from "./routes/revenuecat.js";
+import { requireConsent } from "./middleware/consent.js";
 import { briefRouter } from "./routes/brief.js";
 import { calendarRouter } from "./routes/calendar.js";
 import { converseRouter } from "./routes/converse.js";
@@ -30,8 +34,14 @@ app.get("/healthz", (_req: Request, res: Response): void => {
   res.json({ ok: true });
 });
 
-app.use("/converse", requireAuth, converseRouter);
-app.use("/brief", requireAuth, briefRouter);
+// Model-calling routes sit behind BOTH auth and stored AI consent — the
+// server refuses independently of anything the client hides.
+app.use("/converse", requireAuth, requireConsent, converseRouter);
+app.use("/brief", requireAuth, requireConsent, briefRouter);
+app.use("/consent", requireAuth, consentRouter);
+app.use("/moderation", requireAuth, moderationRouter);
+// The webhook authenticates with its own shared secret, not a user token.
+app.use("/revenuecat", revenuecatRouter);
 app.use("/tasks", requireAuth, tasksRouter);
 app.use("/memory", requireAuth, memoryRouter);
 app.use("/plans", requireAuth, plansRouter);

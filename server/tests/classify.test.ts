@@ -62,3 +62,24 @@ test("classify is stateless across repeated calls (no global-regex lastIndex)", 
     assert.equal(classify("what time is it"), "time_query");
   }
 });
+
+// ── The margin gate's intents (never worth a sonnet turn) ───────────
+
+test("the cheap intents classify away from the question catch-all", () => {
+  assert.equal(classify("How's the weather looking today?"), "weather_query");
+  assert.equal(classify("is it going to rain tomorrow"), "weather_query");
+  assert.equal(classify("what's on my calendar this afternoon"), "calendar_lookup");
+  assert.equal(classify("am I free thursday"), "calendar_lookup");
+  assert.equal(classify("do I have anything tomorrow"), "calendar_lookup");
+  assert.equal(classify("how's my day looking"), "calendar_lookup");
+  assert.equal(classify("what's today's date"), "time_query");
+  assert.equal(classify("what day is tomorrow"), "date_query");
+  assert.equal(classify("I'm done with the report"), "complete_task");
+  assert.equal(classify("finished the workout"), "complete_task");
+  assert.equal(classify("okay"), "simple_ack");
+  assert.equal(classify("Thanks!"), "simple_ack");
+  assert.equal(classify("sounds good"), "simple_ack");
+  assert.equal(classify("never mind"), "simple_ack");
+  // Anchoring: an ack with more behind it is NOT an ack.
+  assert.notEqual(classify("thanks, and add milk to the list"), "simple_ack");
+});

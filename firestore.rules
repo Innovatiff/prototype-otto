@@ -92,6 +92,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Moderation reports flow through the API only.
+    match /moderation_reports/{reportId} {
+      allow read, write: if false;
+    }
+
     // Synced calendar views (the compressed 48-hour automation context)
     // are written through the API and read only by the scheduler. Not even
     // the owner reads them back — the phone already has the calendar.

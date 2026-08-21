@@ -10,7 +10,17 @@ import { z } from "zod";
 
 import { errorFields, logError, logWarning } from "./log.js";
 
-export type ErrorCode = "unauthenticated" | "invalid_request" | "not_found" | "internal";
+export type ErrorCode =
+  | "unauthenticated"
+  | "invalid_request"
+  | "not_found"
+  | "internal"
+  /** The feature belongs to a higher tier — details name it and the tier. */
+  | "entitlement_required"
+  /** A metered allowance is used up — details carry both numbers. */
+  | "allowance_exceeded"
+  /** Third-party AI consent has not been granted (or was revoked). */
+  | "consent_required";
 
 export interface ErrorBody {
   error: {

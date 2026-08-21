@@ -42,6 +42,8 @@ export interface TickDeps {
   purgeViews(now: Date): Promise<number>;
   /** The owner's quiet hours. Cached per owner per pass. */
   loadQuietHours(ownerId: string): Promise<QuietHours>;
+  /** Tier + AI consent for gating. Cached per owner per pass. */
+  loadOwnerGate(ownerId: string): Promise<OwnerGate>;
   /** Owner-wide recent deliveries (daily cap). Cached per owner per pass. */
   loadOwnerDeliveries(ownerId: string): Promise<DeliveryRecord[]>;
   /** One automation's own deliveries, deep enough for the ignored streak. */
@@ -159,6 +161,7 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   };
   const quietCache = new Map<string, QuietHours>();
   const deliveriesCache = new Map<string, DeliveryRecord[]>();
+  const gateCache = new Map<string, OwnerGate>();
   /** Pushes delivered earlier in THIS pass, per owner — the cap sees them. */
   const passPushes = new Map<string, number>();
 
@@ -187,6 +190,7 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
       const outcome = await gateAndExecute(deps, claimed, view, {
         quietCache,
         deliveriesCache,
+        gateCache,
         passPushes,
         summary,
         scheduledFor,
@@ -229,9 +233,21 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   return summary;
 }
 
+/** What the tick needs to know about an owner before running anything. */
+export interface OwnerGate {
+  /** "free" | "lite" | "pro" | "max" — the subscription tier on file. */
+  tier: string;
+  /** Third-party AI consent granted — without it, nothing runs. */
+  hasConsent: boolean;
+}
+
+/** Automation types that belong to Pro and above. */
+const PRO_AUTOMATION_TYPES: ReadonlySet<string> = new Set(["meeting_prep", "weekly_review"]);
+
 interface GateState {
   readonly quietCache: Map<string, QuietHours>;
   readonly deliveriesCache: Map<string, DeliveryRecord[]>;
+  readonly gateCache: Map<string, OwnerGate>;
   readonly passPushes: Map<string, number>;
   readonly summary: TickSummary;
   readonly scheduledFor: string | null;
@@ -255,6 +271,29 @@ async function gateAndExecute(
   view: CalendarView | null,
   state: GateState,
 ): Promise<GateOutcome> {
+  let ownerGate = state.gateCache.get(claimed.ownerId);
+  if (ownerGate === undefined) {
+    // Fail closed: an unreadable profile runs nothing this pass.
+    ownerGate = await deps
+      .loadOwnerGate(claimed.ownerId)
+      .catch((): OwnerGate => ({ tier: "free", hasConsent: false }));
+    state.gateCache.set(claimed.ownerId, ownerGate);
+  }
+  // Revoked (or never-granted) AI consent silences every automation —
+  // their content is model-derived from personal data.
+  if (!ownerGate.hasConsent) {
+    return { result: "suppressed", disable: false };
+  }
+  // Pro-tier automations stay quiet on lower tiers; nothing is deleted,
+  // they simply don't run until the tier does.
+  if (
+    PRO_AUTOMATION_TYPES.has(claimed.type) &&
+    ownerGate.tier !== "pro" &&
+    ownerGate.tier !== "max"
+  ) {
+    return { result: "suppressed", disable: false };
+  }
+
   let quiet = state.quietCache.get(claimed.ownerId);
   if (quiet === undefined) {
     quiet = await deps
