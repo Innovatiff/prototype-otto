@@ -6,12 +6,13 @@ import UniformTypeIdentifiers
 /// queue is App Group storage, no network, no sign-in required here.
 final class ShareViewController: SLComposeServiceViewController {
 
-    override func isContentValid() -> Bool {
-        true
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        placeholder = "Note for Otto…"
     }
 
-    override func placeholder(for controller: SLComposeServiceViewController) -> String! {
-        "Note for Otto…"
+    override func isContentValid() -> Bool {
+        true
     }
 
     override func didSelectPost() {
