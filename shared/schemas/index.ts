@@ -9,6 +9,7 @@ export * from "./automation.js";
 export * from "./brief.js";
 export * from "./calendar.js";
 export * from "./common.js";
+export * from "./experience.js";
 export * from "./task.js";
 export * from "./memory.js";
 export * from "./plan.js";

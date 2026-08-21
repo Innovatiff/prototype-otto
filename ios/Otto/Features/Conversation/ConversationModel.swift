@@ -289,6 +289,60 @@ final class ConversationModel {
     private(set) var briefTourCard: BriefCard?
     private var briefTourToken = UUID()
 
+    // MARK: - Experience tours (dates, trips, days out)
+
+    /// Arrived mid-turn; the tour waits for the model's one-line handoff to
+    /// finish (ottoDone) so two voices never overlap.
+    private var pendingExperienceTour: Experience?
+    /// The chapter on stage during the tour, nil outside it.
+    private(set) var experienceChapter: ExperienceChapter?
+    private(set) var experienceChapterIndex = 0
+    /// The experience the chapter visuals draw from while the tour plays.
+    private(set) var experienceTourCard: Experience?
+    private var experienceTourToken = UUID()
+    /// The resting card after the tour — "saved to Voyages".
+    private(set) var experienceCard: Experience?
+
+    /// The synced presentation: each chapter's illustration slides in, its
+    /// sentences play, the next slides over it. Interruptions cancel
+    /// between chapters; the saved-to-Voyages card rests at the end.
+    private func playExperienceTour(_ experience: Experience) async {
+        let token = UUID()
+        experienceTourToken = token
+        withAnimation(.spring(duration: 0.5, bounce: 0.15)) {
+            experienceTourCard = experience
+        }
+        for (index, chapter) in experience.chapters.enumerated() {
+            guard experienceTourToken == token else { return }
+            withAnimation(.spring(duration: 0.55, bounce: 0.18)) {
+                experienceChapter = chapter
+                experienceChapterIndex = index
+            }
+            Haptics.tick()
+            await voiceLoop.announce(chapter.spoken)
+        }
+        guard experienceTourToken == token else { return }
+        withAnimation(.spring(duration: 0.5, bounce: 0.12)) {
+            experienceChapter = nil
+            experienceTourCard = nil
+            experienceCard = experience
+        }
+    }
+
+    private func cancelExperienceTour() {
+        experienceTourToken = UUID()
+        pendingExperienceTour = nil
+        guard experienceChapter != nil || experienceTourCard != nil else { return }
+        withAnimation(.snappy) {
+            experienceChapter = nil
+            experienceTourCard = nil
+        }
+    }
+
+    func dismissExperienceCard() {
+        withAnimation(.snappy) { experienceCard = nil }
+    }
+
     // MARK: - The stage (speaks and shows)
 
     /// The illustration for whatever Otto is answering right now — set by
@@ -553,11 +607,12 @@ final class ConversationModel {
     /// everything (including speech from a typed turn).
     func toggleVoice() {
         if state == .idle {
-            // The stop glyph shows through the whole brief tour, and the
-            // state dips to idle between chapters — a tap in that instant
-            // means "stop the brief", never "start talking".
-            if briefTourCard != nil {
+            // The stop glyph shows through a running tour, and the state
+            // dips to idle between chapters — a tap in that instant means
+            // "stop the presentation", never "start talking".
+            if briefTourCard != nil || experienceTourCard != nil {
                 cancelBriefTour()
+                cancelExperienceTour()
                 return
             }
             Task {
@@ -566,6 +621,7 @@ final class ConversationModel {
             }
         } else {
             cancelBriefTour()
+            cancelExperienceTour()
             Task { await self.voiceLoop.stopConversation() }
         }
     }
@@ -636,6 +692,7 @@ final class ConversationModel {
     /// in the transcript as notices instead of silently doing nothing.
     private func prepareForTurn() async -> Bool {
         cancelBriefTour()
+        cancelExperienceTour()
         clearStageVisual()
         refreshAccount()
         guard signedIn else {
@@ -708,6 +765,11 @@ final class ConversationModel {
                 Task { await self.beginCalendarFlow() }
             } else if pendingPlanOffer != nil {
                 Task { await self.beginPlanScheduleFlow() }
+            } else if let experience = pendingExperienceTour {
+                // The handoff line just finished — the device takes over
+                // and presents the experience, chapter by chapter.
+                pendingExperienceTour = nil
+                Task { await self.playExperienceTour(experience) }
             }
         case .draft(let recipientName, let body):
             Haptics.tap()
@@ -728,6 +790,11 @@ final class ConversationModel {
             withAnimation(.spring(duration: 0.55, bounce: 0.18)) {
                 walkthroughOffer = walkthrough
             }
+        case .experienceReady(let experience):
+            // Gears down; the tour itself waits for the handoff line.
+            clearStageVisual()
+            Haptics.success()
+            pendingExperienceTour = experience
         case .guidanceUtterance(let text):
             Task { await self.guidance.handleUtterance(text) }
         case .guidanceStartRequested:

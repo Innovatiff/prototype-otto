@@ -35,6 +35,7 @@ struct RootView: View {
     @Bindable var plans: PlansModel
     var calendarSync: CalendarSyncService
     var automations: AutomationsModel
+    var experiences: ExperiencesModel
 
     @State private var tab: Tab = .home
 
@@ -59,6 +60,7 @@ struct RootView: View {
                     settings: settings,
                     tasks: tasks,
                     memory: memory,
+                    experiences: experiences,
                     onBriefScheduleChange: { enabled, hour, minute in
                         model.setBriefSchedule(enabled: enabled, hour: hour, minute: minute)
                     },

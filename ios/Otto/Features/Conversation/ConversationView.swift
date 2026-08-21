@@ -83,9 +83,10 @@ struct ConversationView: View {
             }
 
             // Today's session, one tap away — the plan reaching back out.
-            // (Hidden during the brief tour: the state dips to idle for an
-            // instant between chapters, and the pill must not blink in.)
+            // (Hidden during tours: the state dips to idle for an instant
+            // between chapters, and the pill must not blink in.)
             if model.signedIn, model.state == .idle, model.briefTourCard == nil,
+                model.experienceTourCard == nil,
                 let upNext = model.upNextLabel
             {
                 Button {
@@ -121,6 +122,8 @@ struct ConversationView: View {
 
             if model.briefTourCard != nil {
                 tourSlide
+            } else if model.experienceTourCard != nil {
+                experienceTourSlide
             } else if let visual = model.stageVisual {
                 // Speaks and shows: the illustration for what Otto is
                 // answering right now, slid in mid-turn by the server.
@@ -159,6 +162,12 @@ struct ConversationView: View {
                 .padding(.horizontal, 16)
                 .frame(maxHeight: 400)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if let experience = model.experienceCard {
+                ExperienceRestCard(experience: experience) {
+                    model.dismissExperienceCard()
+                }
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if let plan = model.planCard {
                 // The detail lives here; the voice speaks only the summary.
                 PlanCardView(plan: plan) {
@@ -184,6 +193,7 @@ struct ConversationView: View {
     /// the orb stays big behind them.
     private var orbIsBig: Bool {
         model.briefCard == nil && model.planCard == nil && model.walkthroughOffer == nil
+            && model.experienceTourCard == nil && model.experienceCard == nil
             && !tourVisualActive && !stageDataVisualActive
     }
 
@@ -197,6 +207,25 @@ struct ConversationView: View {
         case .weather, .calendar, .reminders, .plans: return true
         case .building, .automation, nil: return false
         }
+    }
+
+    /// The experience presentation slot — same slide mechanics as the
+    /// brief tour, driven by the experience's own chapters.
+    private var experienceTourSlide: some View {
+        ZStack {
+            if let chapter = model.experienceChapter, let tour = model.experienceTourCard {
+                ExperienceChapterCardView(chapter: chapter, experience: tour)
+                    .id(model.experienceChapterIndex)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        )
+                    )
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: 400)
     }
 
     /// The tour's stage slot: each chapter's illustration slides in from
@@ -297,6 +326,12 @@ struct ConversationView: View {
                     // to idle between chapters and must not flicker this.
                     Text("Your morning brief")
                         .foregroundStyle(OttoTheme.textTertiary)
+                } else if let tour = model.experienceTourCard {
+                    Text(
+                        tour.kind == .trip
+                            ? "Your trip" : tour.kind == .date ? "Your date" : "Your day out"
+                    )
+                    .foregroundStyle(OttoTheme.textTertiary)
                 } else {
                     switch model.state {
                     case .idle:
@@ -474,9 +509,10 @@ struct ConversationView: View {
         .padding(.bottom, 66)
     }
 
-    /// Steady stop glyph through the tour — the state's between-chapter
+    /// Steady stop glyph through any tour — the state's between-chapter
     /// idle dips must not flash the mic icon.
     private var micIsIdle: Bool {
         model.state == .idle && model.briefTourCard == nil
+            && model.experienceTourCard == nil
     }
 }

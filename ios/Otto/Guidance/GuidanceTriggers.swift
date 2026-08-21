@@ -21,6 +21,26 @@ enum GuidanceTriggers {
         "time to train",
         "start my study session",
         "guide me through my session",
+        // Launch/execute — a pending walkthrough wins, else today's plan
+        // session (the guidanceStartRequested handler decides).
+        "launch",
+        "execute",
+        "launch it",
+        "execute it",
+        "launch my plan",
+        "launch the plan",
+        "execute my plan",
+        "execute the plan",
+        "execute plan",
+        "launch plan",
+        "start my plan",
+        "start the plan",
+        "run my plan",
+        "run the plan",
+        "launch my walkthrough",
+        "launch the walkthrough",
+        "start the walkthrough",
+        "start my walkthrough",
     ]
 
     /// Exact-utterance match only — "when should I start my workout" is a

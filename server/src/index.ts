@@ -15,6 +15,7 @@ import { automationsTickRouter, automationsUserRouter } from "./routes/automatio
 import { briefRouter } from "./routes/brief.js";
 import { calendarRouter } from "./routes/calendar.js";
 import { converseRouter } from "./routes/converse.js";
+import { experiencesRouter } from "./routes/experiences.js";
 import { memoryRouter } from "./routes/memory.js";
 import { plansRouter } from "./routes/plans.js";
 import { tasksRouter } from "./routes/tasks.js";
@@ -33,6 +34,7 @@ app.use("/brief", requireAuth, briefRouter);
 app.use("/tasks", requireAuth, tasksRouter);
 app.use("/memory", requireAuth, memoryRouter);
 app.use("/plans", requireAuth, plansRouter);
+app.use("/experiences", requireAuth, experiencesRouter);
 app.use("/calendar", requireAuth, calendarRouter);
 // Deliberately NOT behind requireAuth: /automations/tick authenticates the
 // Cloud Scheduler's OIDC token itself. The tick router matches only /tick;

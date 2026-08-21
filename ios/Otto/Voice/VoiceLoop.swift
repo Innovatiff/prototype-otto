@@ -90,6 +90,10 @@ enum ConversationEvent: Sendable {
     /// A finished one-shot walkthrough — the offer card with its Start
     /// button. The guidance runtime executes it; never spoken in full.
     case walkthroughReady(Walkthrough)
+    /// A finished experience (trip/date/outing), already saved to Voyages.
+    /// The device presents it as an illustrated spoken tour after the
+    /// model's handoff line finishes.
+    case experienceReady(Experience)
     /// The server's effective conversation session for the last turn — the
     /// model persists it so a relaunch resumes the same conversation.
     case session(String)
@@ -744,6 +748,10 @@ actor VoiceLoop {
                 case .walkthroughReady:
                     if let walkthrough = event.data?.decoded(as: Walkthrough.self) {
                         emit(.walkthroughReady(walkthrough))
+                    }
+                case .experienceReady:
+                    if let experience = event.data?.decoded(as: Experience.self) {
+                        emit(.experienceReady(experience))
                     }
                 }
             }

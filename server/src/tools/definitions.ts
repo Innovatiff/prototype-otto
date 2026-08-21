@@ -251,6 +251,43 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
     },
   },
   {
+    name: "create_experience",
+    description:
+      "Plan a full EXPERIENCE — a trip, a date, a day out — researched, " +
+      "budgeted UNDER what they gave (the buffer is deliberate), presented " +
+      "by the device as an illustrated spoken tour, and saved to their " +
+      "Voyages. INTERVIEW FIRST: never call this while the budget, the " +
+      "destination or occasion, or the duration (for trips) is unknown — " +
+      "and NEVER guess a budget. Ask for what's missing ONE question per " +
+      "turn, three questions maximum, each with a concrete suggestion " +
+      "('Beach or city? Casco Viejo eats well on a budget.'). When they " +
+      "already said everything, skip straight to the call. AFTER the tool " +
+      "returns, say ONE handoff line only ('Here's the evening.') — the " +
+      "device narrates and illustrates the whole plan itself; do not " +
+      "describe it, do not read any items, do not list prices.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["trip", "date", "outing"] },
+        request: {
+          type: "string",
+          description:
+            "The full ask plus EVERYTHING learned in the interview: who, " +
+            "where or occasion, when, how long, tastes, constraints.",
+        },
+        budgetAmount: {
+          type: "integer",
+          description: "The stated budget in whole units. From the user, never assumed.",
+        },
+        currency: {
+          type: "string",
+          description: "ISO 4217, e.g. 'USD'. Omit for USD.",
+        },
+      },
+      required: ["kind", "request", "budgetAmount"],
+    },
+  },
+  {
     name: "create_walkthrough",
     description:
       "Build a step-by-step guided walkthrough the user can EXECUTE right " +

@@ -31,6 +31,7 @@ test("exactly the specified tools, snake_case, unique", () => {
     "propose_calendar_event",
     "propose_calendar_move",
     "generate_plan",
+    "create_experience",
     "create_walkthrough",
     "adapt_plan",
     "draft_message",
@@ -96,6 +97,19 @@ test("the spec's product rules are stated where the model reads them", () => {
     "fitness",
     "productivity",
     "learning",
+  ]);
+});
+
+test("create_experience interviews first and hands presentation to the device", () => {
+  assert.deepEqual(properties("create_experience").kind?.enum, ["trip", "date", "outing"]);
+  assert.match(tool("create_experience").description ?? "", /INTERVIEW FIRST/);
+  assert.match(tool("create_experience").description ?? "", /NEVER guess a budget/);
+  assert.match(tool("create_experience").description ?? "", /ONE question per turn/);
+  assert.match(tool("create_experience").description ?? "", /ONE handoff line/);
+  assert.deepEqual(tool("create_experience").input_schema.required, [
+    "kind",
+    "request",
+    "budgetAmount",
   ]);
 });
 

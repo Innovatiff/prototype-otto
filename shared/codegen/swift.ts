@@ -49,6 +49,7 @@ import { z } from "zod";
 import * as automationSchemas from "../schemas/automation.js";
 import * as briefSchemas from "../schemas/brief.js";
 import * as calendarSchemas from "../schemas/calendar.js";
+import * as experienceSchemas from "../schemas/experience.js";
 import * as taskSchemas from "../schemas/task.js";
 import * as memorySchemas from "../schemas/memory.js";
 import * as planSchemas from "../schemas/plan.js";
@@ -74,6 +75,7 @@ const MODULES: readonly ModuleSpec[] = [
   { swiftFile: "Automation", source: "shared/schemas/automation.ts", schemas: automationSchemas },
   { swiftFile: "Brief", source: "shared/schemas/brief.ts", schemas: briefSchemas },
   { swiftFile: "Calendar", source: "shared/schemas/calendar.ts", schemas: calendarSchemas },
+  { swiftFile: "Experience", source: "shared/schemas/experience.ts", schemas: experienceSchemas },
   { swiftFile: "Task", source: "shared/schemas/task.ts", schemas: taskSchemas },
   { swiftFile: "Memory", source: "shared/schemas/memory.ts", schemas: memorySchemas },
   { swiftFile: "Plan", source: "shared/schemas/plan.ts", schemas: planSchemas },

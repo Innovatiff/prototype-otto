@@ -41,6 +41,7 @@ struct OttoApp: App {
     @State private var plans: PlansModel
     @State private var calendarSync: CalendarSyncService
     @State private var automations: AutomationsModel
+    @State private var experiences: ExperiencesModel
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -73,6 +74,7 @@ struct OttoApp: App {
             initialValue: CalendarSyncService(auth: auth, calendar: calendarService)
         )
         _automations = State(initialValue: AutomationsModel(auth: auth))
+        _experiences = State(initialValue: ExperiencesModel(auth: auth))
     }
 
     var body: some Scene {
@@ -84,7 +86,8 @@ struct OttoApp: App {
                 tasks: tasks,
                 plans: plans,
                 calendarSync: calendarSync,
-                automations: automations
+                automations: automations,
+                experiences: experiences
             )
                 // Otto lives in the light: white stage, ink type, real color.
                 .preferredColorScheme(.light)

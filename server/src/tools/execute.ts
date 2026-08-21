@@ -9,6 +9,7 @@
  */
 import { FieldValue } from "firebase-admin/firestore";
 import {
+  ExperienceKind,
   isoDateTime,
   Memory,
   MemoryCategory,
@@ -39,6 +40,12 @@ import {
   updateAutomationScheduling,
 } from "../automations/store.js";
 import { dueToday, listCounts, loadActiveTasks, loadPlanContext } from "../brief/gather.js";
+import {
+  buildExperience,
+  ExperienceGenerationError,
+  generateExperience,
+} from "../experience/generate.js";
+import { mintExperienceId, saveExperience } from "../experience/store.js";
 import { COLLECTIONS, db } from "../firestore.js";
 import { errorFields, logInfo, logWarning } from "../log.js";
 import { tryEmbed } from "../memory/embed.js";
@@ -505,6 +512,73 @@ export const CreateWalkthroughInput = z.object({
   notes: z.string().min(1).max(500).optional(),
 });
 
+export const CreateExperienceInput = z.object({
+  kind: ExperienceKind,
+  request: z.string().min(10).max(800),
+  budgetAmount: z.number().int().min(20).max(1_000_000),
+  currency: z.string().length(3).optional(),
+});
+
+/**
+ * Plan an experience: gears while it researches and budgets, the finished
+ * plan saved to Voyages and handed to the device, which narrates it over
+ * sliding illustrations after the turn ends. The model says one line.
+ */
+async function createExperienceTool(
+  input: z.infer<typeof CreateExperienceInput>,
+  ctx: ToolContext,
+): Promise<ToolExecution> {
+  const labels: Record<ExperienceKind, string> = {
+    trip: "Planning your trip",
+    date: "Planning your date",
+    outing: "Planning your day out",
+  };
+  emitStage(ctx, { kind: "building", label: labels[input.kind] });
+  const currency = input.currency?.toUpperCase() ?? "USD";
+  try {
+    const generated = await generateExperience({
+      userId: ctx.uid,
+      turnId: ctx.turnId,
+      request: input.request,
+      kind: input.kind,
+      statedBudget: input.budgetAmount,
+      currency,
+      now: ctx.now,
+    });
+    const experience = buildExperience(generated.payload, {
+      id: mintExperienceId(),
+      ownerId: ctx.uid,
+      statedBudget: input.budgetAmount,
+      currency,
+      now: ctx.now,
+    });
+    await saveExperience(experience);
+    ctx.emit({ type: "experience_ready", data: experience });
+    return {
+      result: JSON.stringify({
+        created: true,
+        title: experience.title,
+        planned: experience.budget.planned,
+        buffer: experience.budget.buffer,
+        savedToVoyages: true,
+        speak:
+          "ONE short handoff line only — the device presents and narrates " +
+          "the whole plan itself. Do not describe it, list items, or say " +
+          "prices.",
+      }),
+    };
+  } catch (err) {
+    if (err instanceof ExperienceGenerationError) {
+      logWarning("experience_gave_up", { userId: ctx.uid, errors: err.validationErrors });
+      return failure(
+        "The plan didn't come together; nothing was saved. Tell the user " +
+          "plainly and offer to try again.",
+      );
+    }
+    throw err;
+  }
+}
+
 /**
  * One-shot guided walkthrough: gears on stage while it builds, the offer
  * card (with Start) to the screen as an event, one spoken line from the
@@ -866,6 +940,15 @@ export async function executeToolUse(
           ? await createWalkthroughTool(parsed.data, ctx)
           : failure(
               "Invalid create_walkthrough input: goal (specific) and domain are required.",
+            );
+      }
+      case "create_experience": {
+        const parsed = CreateExperienceInput.safeParse(rawInput);
+        return parsed.success
+          ? await createExperienceTool(parsed.data, ctx)
+          : failure(
+              "Invalid create_experience input: kind, a detailed request, and " +
+                "budgetAmount (from the user, never assumed) are required.",
             );
       }
       case "propose_calendar_event": {

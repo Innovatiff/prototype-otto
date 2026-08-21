@@ -6,6 +6,7 @@ struct AccountView: View {
     @Bindable var settings: DebugModel
     @Bindable var tasks: TasksModel
     @Bindable var memory: MemoryModel
+    @Bindable var experiences: ExperiencesModel
     var onBriefScheduleChange: ((Bool, Int, Int) -> Void)?
     var onCalendarSyncChange: ((Bool) -> Void)?
 
@@ -66,6 +67,11 @@ struct AccountView: View {
                     .navigationTitle("Tasks")
             } label: {
                 accountRow(icon: "checklist", color: OttoTheme.mint, title: "Tasks & reminders")
+            }
+            NavigationLink {
+                VoyagesView(model: experiences)
+            } label: {
+                accountRow(icon: "airplane", color: OttoTheme.peach, title: "Voyages")
             }
             NavigationLink {
                 MemoryView(model: memory)

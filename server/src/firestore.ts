@@ -17,6 +17,7 @@ export const COLLECTIONS = {
   sessions: "sessions",
   briefs: "briefs",
   plans: "plans",
+  experiences: "experiences",
   sessionRecords: "session_records",
   automations: "automations",
   calendarViews: "calendar_views",

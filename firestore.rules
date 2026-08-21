@@ -59,6 +59,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Experiences (Voyages) are server-authored by the create_experience
+    // tool; clients read their own and delete through the API only.
+    match /experiences/{experienceId} {
+      allow read: if ownsExisting();
+      allow write: if false;
+    }
+
     // Conversation sessions are written and read only by the API server —
     // clients carry just the sessionId string.
     match /sessions/{sessionId} {

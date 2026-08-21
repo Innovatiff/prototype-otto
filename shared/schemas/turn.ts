@@ -68,6 +68,12 @@ export const TurnEventType = z.enum([
    */
   "walkthrough_ready",
   /**
+   * A finished Experience (trip/date/outing). The DEVICE presents it as an
+   * illustrated spoken tour after the turn ends; the model says only a
+   * one-line handoff. Saved server-side before this event fires.
+   */
+  "experience_ready",
+  /**
    * A StageVisual: the illustration to show while Otto speaks — weather,
    * calendar, reminders, plans, a build in progress, an armed automation.
    */
