@@ -23,7 +23,7 @@ function payloadFixture(): Record<string, unknown> {
       {
         label: "Day 1 — Casco Viejo",
         items: [
-          { kind: "stay", title: "Hotel La Compañía", area: "Casco Viejo", address: "Calle Pedro J. Sossa", estCost: 520, note: "Four nights, taxes in.", startTime: "15:00" },
+          { kind: "stay", title: "Hotel La Compañía", area: "Casco Viejo", address: "Calle Pedro J. Sossa", estCost: 520, note: "Four nights, taxes in.", startTime: "15:00", phone: "+507 202-0110", needsReservation: true },
           { kind: "transport", title: "Airport taxi to the hotel", estCost: 35, startTime: "13:30", durationMin: 40, note: "About 25 km." },
           { kind: "food", title: "Fonda Lo Que Hay", estCost: 40, note: "Order the corvina.", startTime: "19:30", durationMin: 90 },
         ],
@@ -159,4 +159,31 @@ test("the prompt makes it decided, named, and followable by the clock", () => {
   assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("what to order in the note"));
   assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("instruction sheet"));
   assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("approximate gas or fare in estCost"));
+});
+
+test("phones are verified-only and bookings get marked", () => {
+  assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("BOOKABLE"));
+  assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("phone ONLY when a search result showed it"));
+  assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("a guessed number is worse than none"));
+  assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("needsReservation true"));
+
+  // The fixture's verified phone + reservation flag ride through.
+  const result = validateExperience(payloadFixture(), 2000);
+  assert.equal(result.ok, true);
+  if (result.ok !== true) return;
+  const hotel = result.payload.days[0]?.items[0];
+  assert.equal(hotel?.phone, "+507 202-0110");
+  assert.equal(hotel?.needsReservation, true);
+
+  // Prose in the phone field is rejected at the schema line.
+  const payload = payloadFixture();
+  const days = payload["days"] as Array<{ items: Array<Record<string, unknown>> }>;
+  const item = days[0]?.items[0];
+  if (item !== undefined) {
+    item["phone"] = "call the front desk";
+  }
+  const bad = validateExperience(payload, 2000);
+  assert.equal(bad.ok, false);
+  if (bad.ok !== false) return;
+  assert.ok(bad.errors.some((error) => error.includes("phone")));
 });

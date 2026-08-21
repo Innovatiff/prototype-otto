@@ -175,6 +175,18 @@ const ITEM_SCHEMA = {
     },
     area: { type: "string", description: "Neighborhood, for orientation." },
     address: { type: "string", description: "Street address when known." },
+    phone: {
+      type: "string",
+      description:
+        "The place's phone number, ONLY when verified via search — it " +
+        "becomes a Call button. Never guess a number.",
+    },
+    needsReservation: {
+      type: "boolean",
+      description:
+        "true when this place takes or needs booking (the hotel, popular " +
+        "restaurants, ticketed activities) — it joins the reservations list.",
+    },
     startTime: {
       type: "string",
       description: "24h wall clock 'HH:mm'. REQUIRED for everything except tips.",
@@ -262,6 +274,14 @@ currently operating and to ground prices in what things cost now. When
 you cannot verify, recommend in honest generic terms — "a boutique hotel
 in Casco Viejo, around $130 a night" — NEVER invent a specific name you
 aren't confident exists.
+
+BOOKABLE (the user calls from your plan)
+Include phone ONLY when a search result showed it — a Call button dials
+exactly what you write, so a guessed number is worse than none. Mark
+needsReservation true on the hotel, on restaurants that take bookings,
+and on ticketed activities; those become the user's call list. When
+bookings are needed, the overview chapter says so in passing ("Two
+reservations to make — the list is on the card.").
 
 THE CLOCK (the plan is an instruction sheet)
 Every item except tips carries startTime, in order, so the user can

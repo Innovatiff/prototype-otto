@@ -24,6 +24,10 @@ export const ExperienceItem = z.object({
   area: z.string().max(80).optional(),
   /** Street address when known — the itinerary is an instruction sheet. */
   address: z.string().max(160).optional(),
+  /** Phone number, ONLY when verified — powers the Call button. */
+  phone: z.string().regex(/^[+0-9()\-\s.]{7,30}$/).optional(),
+  /** True when this place takes or needs booking — the reservations list. */
+  needsReservation: z.boolean().optional(),
   /** Wall-clock start, 24h "HH:mm". Required for everything but tips. */
   startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   /** How long it takes — drives, activities, dinner. */

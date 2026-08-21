@@ -39,6 +39,87 @@ enum ExperienceArt {
     }
 }
 
+/// The handoff to the system: Otto plans, Apple Maps navigates, the Phone
+/// app dials. Both are user-tapped links — nothing happens on its own.
+enum PlaceActions {
+
+    /// Maps query for a place: name + address (or area) + destination city,
+    /// with transport prefixes stripped ("Drive to Miraflores" → the locks,
+    /// not the phrase).
+    static func mapsURL(item: ExperienceItem, destination: String) -> URL? {
+        var name = item.title
+        for prefix in ["Drive to ", "Walk to ", "Taxi to ", "Uber to ", "Ride to ", "Transfer to "]
+        where name.hasPrefix(prefix) {
+            name = String(name.dropFirst(prefix.count))
+        }
+        let parts = [name, item.address ?? item.area, destination].compactMap { $0 }
+        let query = parts.joined(separator: ", ")
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        else { return nil }
+        return URL(string: "https://maps.apple.com/?q=\(encoded)")
+    }
+
+    /// tel: link from a verified number; junk stays unlinked.
+    static func telURL(_ phone: String) -> URL? {
+        let dialable = phone.filter { $0.isNumber || $0 == "+" }
+        guard dialable.count >= 7 else { return nil }
+        return URL(string: "tel:\(dialable)")
+    }
+}
+
+/// One small capsule action — Directions, Call — tinted and tappable.
+struct ActionPill: View {
+    let symbol: String
+    let text: String
+    let tint: Color
+    let url: URL
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button {
+            Haptics.tick()
+            openURL(url)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(text)
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.13), in: Capsule())
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.93))
+    }
+}
+
+/// The Directions + Call pair for a place; Call appears only with a
+/// verified number, and tips have nowhere to go.
+struct PlaceActionRow: View {
+    let item: ExperienceItem
+    let destination: String
+
+    var body: some View {
+        if item.kind != .tip {
+            HStack(spacing: 8) {
+                if let url = PlaceActions.mapsURL(item: item, destination: destination) {
+                    ActionPill(
+                        symbol: "arrow.triangle.turn.up.right.diamond.fill",
+                        text: "Directions",
+                        tint: OttoTheme.sky,
+                        url: url
+                    )
+                }
+                if let phone = item.phone, let url = PlaceActions.telURL(phone) {
+                    ActionPill(symbol: "phone.fill", text: "Call", tint: OttoTheme.mint, url: url)
+                }
+            }
+        }
+    }
+}
+
 /// One chapter on stage. Overview is a chrome-less hero; the middle
 /// chapters are item cards; budget is the money moment.
 struct ExperienceChapterCardView: View {
@@ -151,9 +232,22 @@ struct ExperienceItemRow: View {
     var currency: String?
     /// The schedule shows the clock; grouped sections hide it.
     var showTime = true
+    /// Set to render the Directions/Call pair (the destination
+    /// disambiguates the Maps query). Nil = presentation-only row.
+    var actionsDestination: String? = nil
 
     var body: some View {
         let art = ExperienceArt.itemArt(item.kind)
+        VStack(alignment: .leading, spacing: 9) {
+            row(art: art)
+            if let destination = actionsDestination {
+                PlaceActionRow(item: item, destination: destination)
+                    .padding(.leading, (showTime ? 52 : 0) + 44)
+            }
+        }
+    }
+
+    private func row(art: (symbol: String, tint: Color)) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             if showTime {
                 Text(item.startTime ?? "—")

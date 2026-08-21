@@ -126,12 +126,22 @@ struct VoyageDetailView: View {
     let model: ExperiencesModel
     let summary: ExperienceSummary
 
+    /// Reservation keys ("day.item") the user has ticked off — kept on
+    /// device, per voyage, across launches.
+    @State private var bookedKeys: Set<String> = []
+
+    private var bookedDefaultsKey: String { "otto.voyage.booked.\(summary.id)" }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 hero
                 if let experience = model.details[summary.id] {
                     budgetCard(experience.budget)
+                    let reservations = reservationEntries(experience)
+                    if !reservations.isEmpty {
+                        reservationsCard(reservations, destination: experience.destination)
+                    }
                     groupedSections(experience)
                     Text("THE SCHEDULE")
                         .font(.caption2.weight(.semibold))
@@ -152,26 +162,122 @@ struct VoyageDetailView: View {
         .navigationTitle(summary.title)
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            bookedKeys = Set(UserDefaults.standard.stringArray(forKey: bookedDefaultsKey) ?? [])
             await model.loadDetail(id: summary.id)
         }
     }
 
+    // MARK: - Reservations (the call list)
+
+    private struct ReservationEntry {
+        let key: String
+        let dayLabel: String
+        let item: ExperienceItem
+    }
+
+    private func reservationEntries(_ experience: Experience) -> [ReservationEntry] {
+        var entries: [ReservationEntry] = []
+        for (dayIndex, day) in experience.days.enumerated() {
+            for (itemIndex, item) in day.items.enumerated()
+            where item.needsReservation == true {
+                entries.append(
+                    ReservationEntry(key: "\(dayIndex).\(itemIndex)", dayLabel: day.label, item: item)
+                )
+            }
+        }
+        return entries
+    }
+
+    /// The bookings, as a working checklist: tick what's done, call and
+    /// navigate straight from the row.
+    private func reservationsCard(
+        _ entries: [ReservationEntry], destination: String
+    ) -> some View {
+        let done = entries.filter { bookedKeys.contains($0.key) }.count
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("RESERVATIONS")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(OttoTheme.rose)
+                Spacer()
+                Text("\(done) of \(entries.count) booked")
+                    .font(.caption2.weight(.medium).monospacedDigit())
+                    .foregroundStyle(done == entries.count ? OttoTheme.mint : OttoTheme.textTertiary)
+            }
+            ForEach(entries, id: \.key) { entry in
+                reservationRow(entry, destination: destination)
+            }
+            Text("Call ahead — plans hold better with a booking.")
+                .font(.caption2)
+                .foregroundStyle(OttoTheme.textTertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ottoCard()
+    }
+
+    private func reservationRow(_ entry: ReservationEntry, destination: String) -> some View {
+        let booked = bookedKeys.contains(entry.key)
+        return HStack(alignment: .top, spacing: 12) {
+            Button {
+                Haptics.tick()
+                if booked {
+                    bookedKeys.remove(entry.key)
+                } else {
+                    bookedKeys.insert(entry.key)
+                }
+                UserDefaults.standard.set(Array(bookedKeys).sorted(), forKey: bookedDefaultsKey)
+            } label: {
+                Image(systemName: booked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(booked ? OttoTheme.mint : OttoTheme.textTertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(booked ? "Booked" : "Not booked yet")
+            VStack(alignment: .leading, spacing: 5) {
+                Text(entry.item.title)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(booked ? OttoTheme.textTertiary : OttoTheme.textPrimary)
+                    .strikethrough(booked, color: OttoTheme.textTertiary)
+                    .lineLimit(1)
+                Text(entry.dayLabel + (entry.item.startTime.map { " · \($0)" } ?? ""))
+                    .font(.caption2)
+                    .foregroundStyle(OttoTheme.textTertiary)
+                if !booked {
+                    PlaceActionRow(item: entry.item, destination: destination)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
     /// The trip by subject before the trip by clock: where you'll stay,
-    /// where you'll eat, and how you'll move (gas included).
+    /// eat, and go, and how you'll move (gas included) — every place one
+    /// tap from directions and a call.
     @ViewBuilder
     private func groupedSections(_ experience: Experience) -> some View {
         let currency = experience.budget.currency
+        let destination = experience.destination
         let stays = items(of: .stay, in: experience)
         let eats = items(of: .food, in: experience)
+        let does = items(of: .activity, in: experience)
         let moves = items(of: .transport, in: experience)
         if !stays.isEmpty {
-            sectionCard("WHERE YOU'LL STAY", tint: OttoTheme.lavender, items: stays, currency: currency)
+            sectionCard(
+                "WHERE YOU'LL STAY", tint: OttoTheme.lavender, items: stays,
+                currency: currency, destination: destination)
         }
         if !eats.isEmpty {
-            sectionCard("WHERE YOU'LL EAT", tint: OttoTheme.peach, items: eats, currency: currency)
+            sectionCard(
+                "WHERE YOU'LL EAT", tint: OttoTheme.peach, items: eats,
+                currency: currency, destination: destination)
+        }
+        if !does.isEmpty {
+            sectionCard(
+                "WHAT YOU'LL DO", tint: OttoTheme.mint, items: does,
+                currency: currency, destination: destination)
         }
         if !moves.isEmpty {
-            transportCard(moves, currency: currency)
+            transportCard(moves, currency: currency, destination: destination)
         }
     }
 
@@ -180,28 +286,35 @@ struct VoyageDetailView: View {
     }
 
     private func sectionCard(
-        _ label: String, tint: Color, items: [ExperienceItem], currency: String
+        _ label: String, tint: Color, items: [ExperienceItem],
+        currency: String, destination: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             Text(label)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(tint)
             ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                ExperienceItemRow(item: item, currency: currency, showTime: false)
+                ExperienceItemRow(
+                    item: item, currency: currency, showTime: false,
+                    actionsDestination: destination)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .ottoCard()
     }
 
-    private func transportCard(_ moves: [ExperienceItem], currency: String) -> some View {
+    private func transportCard(
+        _ moves: [ExperienceItem], currency: String, destination: String
+    ) -> some View {
         let total = moves.compactMap(\.estCost).reduce(0, +)
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 14) {
             Text("TRANSPORT & GAS")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(OttoTheme.sky)
             ForEach(Array(moves.enumerated()), id: \.offset) { _, item in
-                ExperienceItemRow(item: item, currency: currency, showTime: false)
+                ExperienceItemRow(
+                    item: item, currency: currency, showTime: false,
+                    actionsDestination: destination)
             }
             if total > 0 {
                 Text("≈ \(ExperienceArt.money(total, currency)) in drives, fares, and gas")

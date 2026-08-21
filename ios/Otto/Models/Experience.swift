@@ -213,6 +213,8 @@ struct ExperienceItem: Codable, Hashable, Sendable {
     var note: String?
     var area: String?
     var address: String?
+    var phone: String?
+    var needsReservation: Bool?
     var startTime: String?
     var durationMin: Int?
     var estCost: Int?
@@ -223,6 +225,8 @@ struct ExperienceItem: Codable, Hashable, Sendable {
         note: String? = nil,
         area: String? = nil,
         address: String? = nil,
+        phone: String? = nil,
+        needsReservation: Bool? = nil,
         startTime: String? = nil,
         durationMin: Int? = nil,
         estCost: Int? = nil
@@ -232,6 +236,8 @@ struct ExperienceItem: Codable, Hashable, Sendable {
         self.note = note
         self.area = area
         self.address = address
+        self.phone = phone
+        self.needsReservation = needsReservation
         self.startTime = startTime
         self.durationMin = durationMin
         self.estCost = estCost
@@ -243,6 +249,8 @@ struct ExperienceItem: Codable, Hashable, Sendable {
         case note
         case area
         case address
+        case phone
+        case needsReservation
         case startTime
         case durationMin
         case estCost
@@ -255,6 +263,8 @@ struct ExperienceItem: Codable, Hashable, Sendable {
         self.note = try container.decodeIfPresent(String.self, forKey: .note)
         self.area = try container.decodeIfPresent(String.self, forKey: .area)
         self.address = try container.decodeIfPresent(String.self, forKey: .address)
+        self.phone = try container.decodeIfPresent(String.self, forKey: .phone)
+        self.needsReservation = try container.decodeIfPresent(Bool.self, forKey: .needsReservation)
         self.startTime = try container.decodeIfPresent(String.self, forKey: .startTime)
         self.durationMin = try container.decodeIfPresent(Int.self, forKey: .durationMin)
         self.estCost = try container.decodeIfPresent(Int.self, forKey: .estCost)
@@ -267,6 +277,8 @@ struct ExperienceItem: Codable, Hashable, Sendable {
         try container.encodeIfPresent(self.note, forKey: .note)
         try container.encodeIfPresent(self.area, forKey: .area)
         try container.encodeIfPresent(self.address, forKey: .address)
+        try container.encodeIfPresent(self.phone, forKey: .phone)
+        try container.encodeIfPresent(self.needsReservation, forKey: .needsReservation)
         try container.encodeIfPresent(self.startTime, forKey: .startTime)
         try container.encodeIfPresent(self.durationMin, forKey: .durationMin)
         try container.encodeIfPresent(self.estCost, forKey: .estCost)
