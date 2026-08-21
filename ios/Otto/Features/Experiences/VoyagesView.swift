@@ -132,6 +132,11 @@ struct VoyageDetailView: View {
                 hero
                 if let experience = model.details[summary.id] {
                     budgetCard(experience.budget)
+                    groupedSections(experience)
+                    Text("THE SCHEDULE")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(OttoTheme.textTertiary)
+                        .padding(.top, 4)
                     ForEach(Array(experience.days.enumerated()), id: \.offset) { _, day in
                         dayCard(day, currency: experience.budget.currency)
                     }
@@ -149,6 +154,63 @@ struct VoyageDetailView: View {
         .task {
             await model.loadDetail(id: summary.id)
         }
+    }
+
+    /// The trip by subject before the trip by clock: where you'll stay,
+    /// where you'll eat, and how you'll move (gas included).
+    @ViewBuilder
+    private func groupedSections(_ experience: Experience) -> some View {
+        let currency = experience.budget.currency
+        let stays = items(of: .stay, in: experience)
+        let eats = items(of: .food, in: experience)
+        let moves = items(of: .transport, in: experience)
+        if !stays.isEmpty {
+            sectionCard("WHERE YOU'LL STAY", tint: OttoTheme.lavender, items: stays, currency: currency)
+        }
+        if !eats.isEmpty {
+            sectionCard("WHERE YOU'LL EAT", tint: OttoTheme.peach, items: eats, currency: currency)
+        }
+        if !moves.isEmpty {
+            transportCard(moves, currency: currency)
+        }
+    }
+
+    private func items(of kind: ExperienceItemKind, in experience: Experience) -> [ExperienceItem] {
+        experience.days.flatMap { day in day.items.filter { $0.kind == kind } }
+    }
+
+    private func sectionCard(
+        _ label: String, tint: Color, items: [ExperienceItem], currency: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(tint)
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                ExperienceItemRow(item: item, currency: currency, showTime: false)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ottoCard()
+    }
+
+    private func transportCard(_ moves: [ExperienceItem], currency: String) -> some View {
+        let total = moves.compactMap(\.estCost).reduce(0, +)
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("TRANSPORT & GAS")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(OttoTheme.sky)
+            ForEach(Array(moves.enumerated()), id: \.offset) { _, item in
+                ExperienceItemRow(item: item, currency: currency, showTime: false)
+            }
+            if total > 0 {
+                Text("≈ \(ExperienceArt.money(total, currency)) in drives, fares, and gas")
+                    .font(.caption)
+                    .foregroundStyle(OttoTheme.textSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ottoCard()
     }
 
     private var hero: some View {

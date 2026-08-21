@@ -327,6 +327,11 @@ final class ConversationModel {
             experienceTourCard = nil
             experienceCard = experience
         }
+        // The presentation ends by handing the pen back: an active
+        // conversation reopens the mic after this line on its own.
+        await voiceLoop.announce(
+            "How does that sound — keep it, or should I change anything?"
+        )
     }
 
     private func cancelExperienceTour() {

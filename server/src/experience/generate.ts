@@ -101,6 +101,20 @@ export function validateExperience(raw: unknown, statedBudget: number): Experien
     errors.push("budget: nothing carries an estCost — estimate the paid items honestly");
   }
 
+  // The itinerary is an instruction sheet: everything but a tip has a
+  // clock time, and every drive carries how long it takes.
+  for (const [dayIndex, day] of payload.days.entries()) {
+    for (const [itemIndex, item] of day.items.entries()) {
+      const where = `days[${dayIndex}].items[${itemIndex}] "${item.title}"`;
+      if (item.kind !== "tip" && item.startTime === undefined) {
+        errors.push(`${where}: startTime is required — the plan must be followable by the clock`);
+      }
+      if (item.kind === "transport" && item.durationMin === undefined) {
+        errors.push(`${where}: transport needs durationMin (how long the drive/ride takes)`);
+      }
+    }
+  }
+
   const chapterKinds = new Set(payload.chapters.map((chapter) => chapter.kind));
   if (!chapterKinds.has("overview")) {
     errors.push('chapters: an "overview" chapter is required (first)');
@@ -151,12 +165,29 @@ const ITEM_SCHEMA = {
   type: "object",
   properties: {
     kind: { type: "string", enum: ["stay", "food", "activity", "transport", "tip"] },
-    title: { type: "string", description: "The name — real and verified, or honest-generic." },
-    note: { type: "string", description: "ONE short line: why, what to order, when." },
+    title: {
+      type: "string",
+      description: "The SPECIFIC name — 'Hotel La Compañía', 'Fonda Lo Que Hay', 'Drive to Miraflores'.",
+    },
+    note: {
+      type: "string",
+      description: "ONE short line: what to order, why it's here, distance for drives.",
+    },
     area: { type: "string", description: "Neighborhood, for orientation." },
+    address: { type: "string", description: "Street address when known." },
+    startTime: {
+      type: "string",
+      description: "24h wall clock 'HH:mm'. REQUIRED for everything except tips.",
+    },
+    durationMin: {
+      type: "integer",
+      description: "Minutes it takes. REQUIRED for transport; give it for dinner and activities too.",
+    },
     estCost: {
       type: "integer",
-      description: "Whole currency units, estimated HIGH. Omit only for free things.",
+      description:
+        "Whole currency units, estimated HIGH. Drives carry approximate gas " +
+        "or fare here. Omit only for free things.",
     },
   },
   required: ["kind", "title"],
@@ -219,34 +250,45 @@ const WEB_SEARCH_TOOL = {
 
 // ── The prompt ──────────────────────────────────────────────────────
 
-export const EXPERIENCE_SYSTEM_PROMPT = `You are Otto's experience planner: dates, trips, days out — researched, budgeted, and worth trusting.
+export const EXPERIENCE_SYSTEM_PROMPT = `You are Otto's experience planner: dates, trips, days out — researched, decided, timed, and worth following.
 
-RESEARCH
-Use web_search when it's available: verify places are REAL and currently
-operating, prefer named spots with their neighborhood, and ground prices
-in what things actually cost now. When you cannot verify something,
-recommend in honest generic terms — "a boutique hotel in Casco Viejo,
-around $130 a night" — NEVER invent a specific name you aren't confident
-exists.
+DECIDE BY NAME
+You are not offering options; you are the planner. Choose THE hotel, THE
+restaurants, THE venues — one specific pick each, by name, with the
+neighborhood and street address when you know it. At restaurants, say
+what to order in the note ("order the corvina ceviche and patacones").
+Use web_search when it's available to verify places are REAL and
+currently operating and to ground prices in what things cost now. When
+you cannot verify, recommend in honest generic terms — "a boutique hotel
+in Casco Viejo, around $130 a night" — NEVER invent a specific name you
+aren't confident exists.
+
+THE CLOCK (the plan is an instruction sheet)
+Every item except tips carries startTime, in order, so the user can
+follow the day minute by minute. Drives and transfers are their own
+transport items — "Drive to Miraflores" — with durationMin, the distance
+in the note, and approximate gas or fare in estCost. Give durationMin
+for dinners and activities too. Leave slack between items; nobody enjoys
+a sprinted evening.
 
 THE BUDGET ENVELOPE (cannot bend)
 Commit AT MOST 85% of the stated budget; the rest stays back as buffer,
 on purpose — that is the just-in-case margin, and it is a feature.
-Estimate HIGH, not hopeful: taxes, tips, transfers, the drink that isn't
-on the menu photo. Every paid item carries estCost in whole units.
+Estimate HIGH, not hopeful: taxes, tips, gas, the drink that isn't on
+the menu photo. Every paid item carries estCost in whole units.
 
 THE SHAPE
-Trips: one entry per day, labeled ("Day 2 — Old Town"), each day a
-walkable, unhurried sequence — stays and transport included. Dates and
-outings: one "The evening" (or afternoon) timeline. Items get ONE short
-note each: why it's here, what to order, when to go.
+Trips: one entry per day, labeled ("Day 2 — Old Town"), stays and
+transport included. Dates and outings: one "The evening" (or afternoon)
+timeline. Items get ONE short note each.
 
 THE CHAPTERS (the spoken presentation)
 The device narrates chapters over sliding illustrations. Overview first,
-budget last, 1-3 sentences each, under 160 words total. Speak judgment,
-never lists: "Stay in Casco Viejo — everything good is a walk from
-there." The budget chapter says the planned number, that it lands under
-what they gave, and what the buffer is for.
+budget last, 1-3 sentences each, under 160 words total. Speak judgment
+with the names in it — "Dinner is Fonda Lo Que Hay at seven thirty;
+order the corvina" — never read the full list. The budget chapter says
+the planned number, that it lands under what they gave, and what the
+buffer is for.
 
 Call emit_experience exactly once when the plan is finished.`;
 

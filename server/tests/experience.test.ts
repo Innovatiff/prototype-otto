@@ -23,16 +23,16 @@ function payloadFixture(): Record<string, unknown> {
       {
         label: "Day 1 — Casco Viejo",
         items: [
-          { kind: "stay", title: "Boutique hotel in Casco Viejo", area: "Casco Viejo", estCost: 520, note: "Four nights, taxes in." },
-          { kind: "transport", title: "Airport taxi", estCost: 35 },
-          { kind: "food", title: "Fonda dinner", estCost: 40, note: "Order the corvina." },
+          { kind: "stay", title: "Hotel La Compañía", area: "Casco Viejo", address: "Calle Pedro J. Sossa", estCost: 520, note: "Four nights, taxes in.", startTime: "15:00" },
+          { kind: "transport", title: "Airport taxi to the hotel", estCost: 35, startTime: "13:30", durationMin: 40, note: "About 25 km." },
+          { kind: "food", title: "Fonda Lo Que Hay", estCost: 40, note: "Order the corvina.", startTime: "19:30", durationMin: 90 },
         ],
       },
       {
         label: "Day 2 — The canal",
         items: [
-          { kind: "activity", title: "Miraflores Locks visitor center", estCost: 20 },
-          { kind: "food", title: "Fish market ceviche", estCost: 15 },
+          { kind: "activity", title: "Miraflores Locks visitor center", estCost: 20, startTime: "10:00", durationMin: 120 },
+          { kind: "food", title: "Mercado de Mariscos ceviche", estCost: 15, startTime: "13:00" },
           { kind: "tip", title: "Carry small bills", note: "Cards are patchy outside malls." },
         ],
       },
@@ -92,6 +92,20 @@ test("a costless plan is rejected — estimates are the honesty", () => {
   assert.ok(result.errors.some((error) => error.includes("nothing carries an estCost")));
 });
 
+test("the clock is enforced: non-tips need startTime, drives need durationMin", () => {
+  const payload = payloadFixture();
+  const days = payload["days"] as Array<{ items: Array<Record<string, unknown>> }>;
+  delete days[0]?.items[2]?.["startTime"]; // dinner loses its clock
+  delete days[0]?.items[1]?.["durationMin"]; // the taxi loses its duration
+  const result = validateExperience(payload, 2000);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.ok(result.errors.some((error) => error.includes("startTime is required")));
+  assert.ok(result.errors.some((error) => error.includes("transport needs durationMin")));
+  // The tip never needs a clock.
+  assert.ok(!result.errors.some((error) => error.includes("Carry small bills")));
+});
+
 // ── Chapter order ───────────────────────────────────────────────────
 
 test("overview must open and budget must close the presentation", () => {
@@ -137,4 +151,12 @@ test("the prompt carries realism, the envelope, and the chapter shape", () => {
   assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("Overview first,"));
   assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("budget last"));
   assert.equal(EXPERIENCE_TOOL.name, "emit_experience");
+});
+
+test("the prompt makes it decided, named, and followable by the clock", () => {
+  assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("DECIDE BY NAME"));
+  assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("one specific pick each, by name"));
+  assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("what to order in the note"));
+  assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("instruction sheet"));
+  assert.ok(EXPERIENCE_SYSTEM_PROMPT.includes("approximate gas or fare in estCost"));
 });

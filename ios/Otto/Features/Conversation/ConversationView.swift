@@ -506,7 +506,7 @@ struct ConversationView: View {
         .disabled(!model.signedIn)
         .accessibilityLabel(micIsIdle ? "Start voice conversation" : "Stop")
         .padding(.top, 2)
-        .padding(.bottom, 66)
+        .padding(.bottom, 71)
     }
 
     /// Steady stop glyph through any tour — the state's between-chapter

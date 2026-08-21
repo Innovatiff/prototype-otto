@@ -212,6 +212,9 @@ struct ExperienceItem: Codable, Hashable, Sendable {
     var title: String
     var note: String?
     var area: String?
+    var address: String?
+    var startTime: String?
+    var durationMin: Int?
     var estCost: Int?
 
     init(
@@ -219,12 +222,18 @@ struct ExperienceItem: Codable, Hashable, Sendable {
         title: String,
         note: String? = nil,
         area: String? = nil,
+        address: String? = nil,
+        startTime: String? = nil,
+        durationMin: Int? = nil,
         estCost: Int? = nil
     ) {
         self.kind = kind
         self.title = title
         self.note = note
         self.area = area
+        self.address = address
+        self.startTime = startTime
+        self.durationMin = durationMin
         self.estCost = estCost
     }
 
@@ -233,6 +242,9 @@ struct ExperienceItem: Codable, Hashable, Sendable {
         case title
         case note
         case area
+        case address
+        case startTime
+        case durationMin
         case estCost
     }
 
@@ -242,6 +254,9 @@ struct ExperienceItem: Codable, Hashable, Sendable {
         self.title = try container.decode(String.self, forKey: .title)
         self.note = try container.decodeIfPresent(String.self, forKey: .note)
         self.area = try container.decodeIfPresent(String.self, forKey: .area)
+        self.address = try container.decodeIfPresent(String.self, forKey: .address)
+        self.startTime = try container.decodeIfPresent(String.self, forKey: .startTime)
+        self.durationMin = try container.decodeIfPresent(Int.self, forKey: .durationMin)
         self.estCost = try container.decodeIfPresent(Int.self, forKey: .estCost)
     }
 
@@ -251,6 +266,9 @@ struct ExperienceItem: Codable, Hashable, Sendable {
         try container.encode(self.title, forKey: .title)
         try container.encodeIfPresent(self.note, forKey: .note)
         try container.encodeIfPresent(self.area, forKey: .area)
+        try container.encodeIfPresent(self.address, forKey: .address)
+        try container.encodeIfPresent(self.startTime, forKey: .startTime)
+        try container.encodeIfPresent(self.durationMin, forKey: .durationMin)
         try container.encodeIfPresent(self.estCost, forKey: .estCost)
     }
 }

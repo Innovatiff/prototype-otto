@@ -264,7 +264,10 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
       "already said everything, skip straight to the call. AFTER the tool " +
       "returns, say ONE handoff line only ('Here's the evening.') — the " +
       "device narrates and illustrates the whole plan itself; do not " +
-      "describe it, do not read any items, do not list prices.",
+      "describe it, do not read any items, do not list prices. The device " +
+      "then asks if they want changes: when they do, call this tool AGAIN " +
+      "with the FULL revised request — everything kept plus what changed " +
+      "('same Panama trip, keep the hotel, swap day 2 dinner for seafood').",
     input_schema: {
       type: "object",
       properties: {

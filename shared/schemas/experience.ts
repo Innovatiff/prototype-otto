@@ -22,6 +22,12 @@ export const ExperienceItem = z.object({
   note: z.string().max(200).optional(),
   /** Neighborhood or area, for orientation. */
   area: z.string().max(80).optional(),
+  /** Street address when known — the itinerary is an instruction sheet. */
+  address: z.string().max(160).optional(),
+  /** Wall-clock start, 24h "HH:mm". Required for everything but tips. */
+  startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  /** How long it takes — drives, activities, dinner. */
+  durationMin: z.number().int().min(1).max(1440).optional(),
   /** Estimated cost in whole currency units; omit for free things. */
   estCost: z.number().int().min(0).optional(),
 });

@@ -141,17 +141,26 @@ private struct ExperienceItemsCard: View {
     }
 }
 
-/// One itinerary item: icon tile, name, one-line note, cost chip. Shared
-/// between the tour and the Voyage detail screen.
+/// One itinerary item: the clock, the icon, the NAME, what to do there,
+/// where it is, how long, how much. Shared between the tour and the
+/// Voyage detail screen — this row is the instruction.
 struct ExperienceItemRow: View {
     let item: ExperienceItem
     /// Pass a currency to show costs; nil hides them (the tour keeps rows
     /// visual — the budget chapter owns the numbers).
     var currency: String?
+    /// The schedule shows the clock; grouped sections hide it.
+    var showTime = true
 
     var body: some View {
         let art = ExperienceArt.itemArt(item.kind)
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            if showTime {
+                Text(item.startTime ?? "—")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(item.startTime != nil ? art.tint : OttoTheme.textTertiary)
+                    .frame(width: 42, alignment: .leading)
+            }
             IconTile(symbol: art.symbol, tint: art.tint)
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
@@ -163,18 +172,30 @@ struct ExperienceItemRow: View {
                         .font(.caption2)
                         .foregroundStyle(OttoTheme.textTertiary)
                         .lineLimit(2)
-                } else if let area = item.area {
-                    Text(area)
-                        .font(.caption2)
-                        .foregroundStyle(OttoTheme.textTertiary)
-                        .lineLimit(1)
+                }
+                if let address = item.address ?? item.area {
+                    HStack(spacing: 3) {
+                        Image(systemName: "mappin")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text(address)
+                            .lineLimit(1)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(OttoTheme.textTertiary)
                 }
             }
             Spacer(minLength: 0)
-            if let currency, let cost = item.estCost {
-                Text(ExperienceArt.money(cost, currency))
-                    .font(.caption.weight(.medium).monospacedDigit())
-                    .foregroundStyle(OttoTheme.textSecondary)
+            VStack(alignment: .trailing, spacing: 2) {
+                if let currency, let cost = item.estCost {
+                    Text(ExperienceArt.money(cost, currency))
+                        .font(.caption.weight(.medium).monospacedDigit())
+                        .foregroundStyle(OttoTheme.textSecondary)
+                }
+                if let duration = item.durationMin {
+                    Text("\(duration) min")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(OttoTheme.textTertiary)
+                }
             }
         }
     }

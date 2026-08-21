@@ -67,56 +67,47 @@ struct StageVisualView: View {
     }
 }
 
-/// Something being assembled: two meshed gears turning against each other
-/// while rows build themselves in a loop. On stage while a plan generates
-/// or an automation is being set up.
+/// Work in progress, stated calmly: a low card with just the label and a
+/// light running its border. Professional, and never a spinner.
 struct BuildingView: View {
     var label: String?
 
     var body: some View {
-        VStack(spacing: 18) {
-            ZStack {
-                Circle()
-                    .fill(OttoTheme.rose.opacity(0.10))
-                    .frame(width: 96, height: 96)
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(OttoTheme.rose)
-                    .spinSlow(duration: 7)
-                    .offset(x: -10, y: 6)
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 25, weight: .semibold))
-                    .foregroundStyle(OttoTheme.sky)
-                    .spinSlow(duration: 5, reverse: true)
-                    .offset(x: 24, y: -20)
-            }
-            // Rows assembling, forever: each pass builds three, then starts
-            // over — work visibly in progress, never a spinner.
-            PhaseAnimator([0, 1, 2, 3]) { phase in
-                VStack(alignment: .leading, spacing: 8) {
-                    buildBar(width: 170, on: phase >= 1)
-                    buildBar(width: 122, on: phase >= 2)
-                    buildBar(width: 84, on: phase >= 3)
-                }
-                .frame(width: 170, alignment: .leading)
-            } animation: { _ in
-                .spring(duration: 0.5, bounce: 0.25)
-            }
-            if let label {
-                Text(label)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(OttoTheme.textSecondary)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .ottoCard()
+        Text(label ?? "Working on it")
+            .font(.system(size: 16, weight: .semibold, design: .rounded))
+            .foregroundStyle(OttoTheme.textPrimary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .ottoCard()
+            .overlay(BorderRunner(cornerRadius: OttoTheme.cardRadius))
     }
+}
 
-    private func buildBar(width: CGFloat, on: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 5, style: .continuous)
-            .fill(on ? OttoTheme.control : OttoTheme.control.opacity(0.4))
-            .frame(width: on ? width : 30, height: 10)
+/// A short bright segment traveling the card's border on a fixed clock —
+/// TimelineView-driven so the wrap around the corner never stutters.
+private struct BorderRunner: View {
+    var cornerRadius: CGFloat
+    var tint: Color = OttoTheme.rose
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 40.0)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            let phase = CGFloat((time / 2.8).truncatingRemainder(dividingBy: 1.0))
+            let length: CGFloat = 0.28
+            let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            ZStack {
+                shape
+                    .trim(from: phase, to: min(phase + length, 1))
+                    .stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                if phase + length > 1 {
+                    shape
+                        .trim(from: 0, to: phase + length - 1)
+                        .stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                }
+            }
+            .shadow(color: tint.opacity(0.45), radius: 4)
+        }
+        .allowsHitTesting(false)
     }
 }
 
