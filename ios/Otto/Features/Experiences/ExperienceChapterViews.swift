@@ -208,6 +208,7 @@ struct ExperienceItemRow: View {
 /// mint, because the margin is the feature.
 private struct ExperienceBudgetSlide: View {
     let budget: ExperienceBudget
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var filled = false
 
     var body: some View {
@@ -246,15 +247,21 @@ private struct ExperienceBudgetSlide: View {
         .padding(.vertical, 8)
         .ottoCard()
         .onAppear {
+            if reduceMotion {
+                filled = true
+                return
+            }
             withAnimation(.spring(duration: 1.0, bounce: 0.1).delay(0.3)) { filled = true }
         }
     }
 }
 
-/// The planned total rolling up from zero.
+/// The planned total rolling up from zero — or, under Reduce Motion,
+/// simply stated.
 private struct CountUpMoney: View {
     let value: Int
     let currency: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = 0
 
     var body: some View {
@@ -262,6 +269,10 @@ private struct CountUpMoney: View {
             .contentTransition(.numericText(value: Double(shown)))
             .monospacedDigit()
             .task {
+                if reduceMotion {
+                    shown = value
+                    return
+                }
                 try? await Task.sleep(for: .seconds(0.25))
                 if Task.isCancelled { return }
                 withAnimation(.spring(duration: 1.0)) { shown = value }
@@ -370,12 +381,13 @@ private struct ChapterChip: View {
 
 private struct StaggerIn: ViewModifier {
     let index: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
 
     func body(content: Content) -> some View {
         content
             .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 14)
+            .offset(y: shown || reduceMotion ? 0 : 14)
             .onAppear {
                 withAnimation(
                     .spring(duration: 0.5, bounce: 0.25).delay(0.12 + Double(index) * 0.07)
@@ -387,12 +399,14 @@ private struct StaggerIn: ViewModifier {
 }
 
 private struct Floaty: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var up = false
 
     func body(content: Content) -> some View {
         content
             .offset(y: up ? -4 : 4)
             .onAppear {
+                guard !reduceMotion else { return }
                 withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
                     up = true
                 }

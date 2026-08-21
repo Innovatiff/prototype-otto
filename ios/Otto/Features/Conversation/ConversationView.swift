@@ -7,6 +7,26 @@ struct ConversationView: View {
     @Bindable var model: ConversationModel
     /// Signed-out state routes here (the Account tab holds sign-in).
     var onOpenAccount: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Chapters slide over each other — or cross-fade under Reduce Motion.
+    private var slideOver: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            )
+    }
+
+    /// Cards rise from the bottom — or fade under Reduce Motion.
+    private var riseIn: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity)
+    }
+
+    private var pillPop: AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.92))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,7 +43,7 @@ struct ConversationView: View {
                 DebugOverlayView(model: model)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 130)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(riseIn)
             }
         }
         .simultaneousGesture(
@@ -75,6 +95,12 @@ struct ConversationView: View {
                     Text("What's first?")
                         .font(.system(size: 17, weight: .medium, design: .rounded))
                         .foregroundStyle(OttoTheme.textSecondary)
+                    // Discoverability: one thing to try, rotating — only
+                    // while the stage is clean and Otto is idle.
+                    if model.state == .idle, orbIsBig {
+                        HintTicker()
+                            .padding(.top, 4)
+                    }
                 }
             } else {
                 Text("Sign in to talk to Otto.")
@@ -106,7 +132,7 @@ struct ConversationView: View {
                 }
                 .buttonStyle(PressableButtonStyle(scale: 0.94))
                 .padding(.top, 12)
-                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .transition(pillPop)
                 .accessibilityLabel("Start \(upNext)")
             }
 
@@ -137,12 +163,7 @@ struct ConversationView: View {
                 .id(model.stageVisualID)
                 .padding(.horizontal, 16)
                 .frame(maxHeight: 400)
-                .transition(
-                    .asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    )
-                )
+                .transition(slideOver)
             } else if let offer = model.walkthroughOffer {
                 WalkthroughCardView(
                     walkthrough: offer,
@@ -154,20 +175,20 @@ struct ConversationView: View {
                 )
                 .padding(.horizontal, 16)
                 .frame(maxHeight: 400)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(riseIn)
             } else if let card = model.briefCard {
                 BriefCardView(card: card) {
                     model.dismissBrief()
                 }
                 .padding(.horizontal, 16)
                 .frame(maxHeight: 400)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(riseIn)
             } else if let experience = model.experienceCard {
                 ExperienceRestCard(experience: experience) {
                     model.dismissExperienceCard()
                 }
                 .padding(.horizontal, 16)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(riseIn)
             } else if let plan = model.planCard {
                 // The detail lives here; the voice speaks only the summary.
                 PlanCardView(plan: plan) {
@@ -175,7 +196,7 @@ struct ConversationView: View {
                 }
                 .padding(.horizontal, 16)
                 .frame(maxHeight: 400)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(riseIn)
             } else {
                 dialogue
                     .frame(maxHeight: 170)
@@ -216,12 +237,7 @@ struct ConversationView: View {
             if let chapter = model.experienceChapter, let tour = model.experienceTourCard {
                 ExperienceChapterCardView(chapter: chapter, experience: tour)
                     .id(model.experienceChapterIndex)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(slideOver)
             }
         }
         .padding(.horizontal, 16)
@@ -241,16 +257,46 @@ struct ConversationView: View {
                     model.startTourPlanSession()
                 }
                 .id(model.briefChapterIndex)
-                .transition(
-                    .asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    )
-                )
+                .transition(slideOver)
             }
         }
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: 400)
+    }
+
+    /// One thing to say, rotating gently — the whole feature set taught
+    /// in passing, one suggestion at a time.
+    private struct HintTicker: View {
+        @State private var index = 0
+
+        private static let hints: [String] = [
+            "Get me ready for today",
+            "Plan a trip to Panama under $2,000",
+            "Walk me through changing a tire",
+            "Plan a romantic date for Friday",
+            "Build me a four-week workout plan",
+            "Remind me to call the pharmacy at 5",
+            "What's due today?",
+            "How's the weather looking?",
+            "Add milk and eggs to my Walmart list",
+            "Every Friday at 3, check my weekend",
+        ]
+
+        var body: some View {
+            Text("Try  \u{201C}\(Self.hints[index])\u{201D}")
+                .font(.footnote)
+                .foregroundStyle(OttoTheme.textTertiary)
+                .contentTransition(.opacity)
+                .task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(6))
+                        if Task.isCancelled { return }
+                        withAnimation(.easeInOut(duration: 0.6)) {
+                            index = (index + 1) % Self.hints.count
+                        }
+                    }
+                }
+        }
     }
 
     /// The words of the current exchange only — no scrollback, no bubbles.

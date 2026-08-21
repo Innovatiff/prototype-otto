@@ -62,6 +62,28 @@ final class DebugModel {
         signedInUserId = auth.currentUserId
     }
 
+    /// Permanent account deletion (App Store 5.1.1(v)): the server erases
+    /// every document, deletes the auth user, and we sign out locally.
+    /// The auth token is already invalid afterward — sign-out never fails
+    /// the flow.
+    func deleteAccount() async {
+        guard let url = URL(string: serverURLString), url.scheme != nil else {
+            authMessage = "Invalid server URL."
+            return
+        }
+        isAuthBusy = true
+        authMessage = ""
+        do {
+            try await APIClient(baseURL: url, auth: auth).deleteAccount()
+            try? auth.signOut()
+            signedInUserId = auth.currentUserId
+            authMessage = "Account deleted."
+        } catch {
+            authMessage = "Deletion failed: \(error.localizedDescription)"
+        }
+        isAuthBusy = false
+    }
+
     private func runAuth(_ operation: () async throws -> Void) async {
         isAuthBusy = true
         authMessage = ""
@@ -140,6 +162,7 @@ struct DebugView: View {
     var onBriefScheduleChange: ((Bool, Int, Int) -> Void)?
     /// Fired when the calendar-sync consent toggle changes.
     var onCalendarSyncChange: ((Bool) -> Void)?
+    @State private var confirmingDeletion = false
     @State private var briefEnabled = false
     @State private var wakeTime = Date()
     @State private var calendarSyncEnabled = false
@@ -235,6 +258,27 @@ struct DebugView: View {
                 }
                 Button("Sign Out", role: .destructive) {
                     model.signOut()
+                }
+                Button("Delete Account…", role: .destructive) {
+                    confirmingDeletion = true
+                }
+                .disabled(model.isAuthBusy)
+                .confirmationDialog(
+                    "Delete your account?",
+                    isPresented: $confirmingDeletion,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete everything", role: .destructive) {
+                        Haptics.caution()
+                        Task { await model.deleteAccount() }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(
+                        "Permanently deletes your account and everything Otto "
+                            + "holds — tasks, memories, plans, voyages, automations, "
+                            + "and history. This cannot be undone."
+                    )
                 }
             } else {
                 TextField("Email", text: $model.email)

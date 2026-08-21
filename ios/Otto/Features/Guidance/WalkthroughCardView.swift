@@ -116,12 +116,13 @@ struct WalkthroughCardView: View {
 /// The same rise-and-fade cascade the stage visuals use, local to this file.
 private struct CascadeIn: ViewModifier {
     let index: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
 
     func body(content: Content) -> some View {
         content
             .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 12)
+            .offset(y: shown || reduceMotion ? 0 : 12)
             .onAppear {
                 withAnimation(
                     .spring(duration: 0.5, bounce: 0.25).delay(0.12 + Double(index) * 0.07)

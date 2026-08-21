@@ -246,12 +246,13 @@ private struct PlanRow: View {
 
 private struct CascadeIn: ViewModifier {
     let index: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
 
     func body(content: Content) -> some View {
         content
             .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 14)
+            .offset(y: shown || reduceMotion ? 0 : 14)
             .onAppear {
                 withAnimation(
                     .spring(duration: 0.45, bounce: 0.22).delay(Double(index) * 0.06)

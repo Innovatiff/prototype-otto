@@ -85,11 +85,23 @@ struct BuildingView: View {
 
 /// A short bright segment traveling the card's border on a fixed clock —
 /// TimelineView-driven so the wrap around the corner never stutters.
+/// Reduce Motion swaps the runner for a calm static border.
 private struct BorderRunner: View {
     var cornerRadius: CGFloat
     var tint: Color = OttoTheme.rose
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if reduceMotion {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(tint.opacity(0.5), lineWidth: 2)
+                .allowsHitTesting(false)
+        } else {
+            runner
+        }
+    }
+
+    private var runner: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 40.0)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
             let phase = CGFloat((time / 2.8).truncatingRemainder(dividingBy: 1.0))
@@ -284,6 +296,7 @@ private struct CalendarChapterCard: View {
 /// The clash, breathing gently so it reads as live, not decorative.
 private struct ConflictBanner: View {
     let conflict: Conflict
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var glow = false
 
     var body: some View {
@@ -306,6 +319,7 @@ private struct ConflictBanner: View {
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
         .onAppear {
+            guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
                 glow = true
             }
@@ -448,14 +462,16 @@ private struct RemindersChapterCard: View {
 // MARK: - Motion modifiers
 
 /// Rows cascade in: a small rise + fade, each a beat after the last.
+/// Reduce Motion keeps the fade and drops the rise.
 private struct StaggerIn: ViewModifier {
     let index: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
 
     func body(content: Content) -> some View {
         content
             .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 14)
+            .offset(y: shown || reduceMotion ? 0 : 14)
             .onAppear {
                 withAnimation(
                     .spring(duration: 0.5, bounce: 0.25).delay(0.12 + Double(index) * 0.07)
@@ -467,13 +483,16 @@ private struct StaggerIn: ViewModifier {
 }
 
 /// Gentle vertical drift, forever — ambient life for a hero icon.
+/// Still under Reduce Motion.
 private struct Floaty: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var up = false
 
     func body(content: Content) -> some View {
         content
             .offset(y: up ? -4 : 4)
             .onAppear {
+                guard !reduceMotion else { return }
                 withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
                     up = true
                 }
@@ -482,13 +501,16 @@ private struct Floaty: ViewModifier {
 }
 
 /// A slow rock back and forth — the plan illustration warming up.
+/// Still under Reduce Motion.
 private struct Sway: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tilted = false
 
     func body(content: Content) -> some View {
         content
             .rotationEffect(.degrees(tilted ? 3 : -3))
             .onAppear {
+                guard !reduceMotion else { return }
                 withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
                     tilted = true
                 }
@@ -496,17 +518,19 @@ private struct Sway: ViewModifier {
     }
 }
 
-/// A full continuous turn — the sun doing sun things, gears doing gear
-/// things (reversed for the meshed partner).
+/// A full continuous turn — the sun doing sun things. Still under
+/// Reduce Motion.
 private struct SpinSlow: ViewModifier {
     var duration: Double = 22
     var reverse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var turned = false
 
     func body(content: Content) -> some View {
         content
             .rotationEffect(.degrees(turned ? (reverse ? -360 : 360) : 0))
             .onAppear {
+                guard !reduceMotion else { return }
                 withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
                     turned = true
                 }
@@ -523,9 +547,11 @@ extension View {
     }
 }
 
-/// The temperature rolling up from zero on arrival.
+/// The temperature rolling up from zero on arrival — or, under Reduce
+/// Motion, simply stated.
 private struct CountUpDegrees: View {
     let value: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = 0
 
     var body: some View {
@@ -533,6 +559,10 @@ private struct CountUpDegrees: View {
             .contentTransition(.numericText(value: Double(shown)))
             .monospacedDigit()
             .task {
+                if reduceMotion {
+                    shown = value
+                    return
+                }
                 try? await Task.sleep(for: .seconds(0.25))
                 if Task.isCancelled { return }
                 withAnimation(.spring(duration: 0.9)) { shown = value }
@@ -595,12 +625,13 @@ private struct ChapterEmptyState: View {
     let symbol: String
     let tint: Color
     let title: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
 
     var body: some View {
         VStack(spacing: 10) {
             IconTile(symbol: symbol, tint: tint, side: 56, glyph: 24)
-                .scaleEffect(shown ? 1 : 0.6)
+                .scaleEffect(shown || reduceMotion ? 1 : 0.6)
                 .opacity(shown ? 1 : 0)
             Text(title)
                 .font(.system(size: 18, weight: .semibold, design: .rounded))

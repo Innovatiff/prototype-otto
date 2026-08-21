@@ -11,6 +11,7 @@ import { registerBuiltInHandlers } from "./automations/builtins.js";
 import { errorBody, errorMiddleware } from "./errors.js";
 import { errorFields, logError, logInfo } from "./log.js";
 import { requireAuth } from "./middleware/auth.js";
+import { accountRouter } from "./routes/account.js";
 import { automationsTickRouter, automationsUserRouter } from "./routes/automations.js";
 import { briefRouter } from "./routes/brief.js";
 import { calendarRouter } from "./routes/calendar.js";
@@ -35,6 +36,7 @@ app.use("/tasks", requireAuth, tasksRouter);
 app.use("/memory", requireAuth, memoryRouter);
 app.use("/plans", requireAuth, plansRouter);
 app.use("/experiences", requireAuth, experiencesRouter);
+app.use("/account", requireAuth, accountRouter);
 app.use("/calendar", requireAuth, calendarRouter);
 // Deliberately NOT behind requireAuth: /automations/tick authenticates the
 // Cloud Scheduler's OIDC token itself. The tick router matches only /tick;

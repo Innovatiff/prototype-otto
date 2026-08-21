@@ -115,6 +115,7 @@ struct EclipseOrb: View {
     var level: Float
     var size: CGFloat = 250
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var breathing = false
     /// Crossfade phase between the two grain fields — the corona's twinkle.
     @State private var shimmer = false
@@ -208,13 +209,16 @@ struct EclipseOrb: View {
         .animation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true), value: breathing)
         .animation(.linear(duration: 0.09), value: level)
         .onAppear {
+            // Reduce Motion: the orb rests — no breathing, no shimmer,
+            // no speaking pulse. It still colors and glows.
+            guard !reduceMotion else { return }
             breathing = true
             withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
                 shimmer = true
             }
         }
         .onChange(of: state) { _, newState in
-            if newState == .speaking {
+            if newState == .speaking, !reduceMotion {
                 // A strong rhythmic pulse — scale and corona brightness
                 // together — for as long as Otto is talking.
                 withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
