@@ -197,6 +197,8 @@ private struct UpNextTile: View {
 
 private struct TileChip: View {
     let text: String
+    /// White on tinted tiles; control-grey on white cards.
+    var fill: Color = OttoTheme.surface
 
     var body: some View {
         Text(text)
@@ -204,7 +206,24 @@ private struct TileChip: View {
             .foregroundStyle(OttoTheme.ink)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
-            .background(OttoTheme.surface, in: Capsule())
+            .background(fill, in: Capsule())
+    }
+}
+
+/// The hero glyph drifts gently — still under Reduce Motion.
+private struct PlanFloaty: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var up = false
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: up ? -4 : 4)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
+                    up = true
+                }
+            }
     }
 }
 
@@ -232,7 +251,8 @@ private struct PlanRow: View {
             Spacer(minLength: 8)
             TileChip(
                 text: "Wk \(PlansModel.week(of: active, now: Date()))/"
-                    + "\(PlansModel.weekCount(horizonDays: active.meta.horizonDays))"
+                    + "\(PlansModel.weekCount(horizonDays: active.meta.horizonDays))",
+                fill: OttoTheme.control
             )
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
@@ -283,6 +303,7 @@ struct PlanDetailView: View {
                 onAdaptPlan: onAdaptPlan,
                 onStartSession: onStartSession
             )
+            .padding(.horizontal, 18)
             .padding(.vertical, 12)
         }
         .scrollIndicators(.hidden)
@@ -292,8 +313,10 @@ struct PlanDetailView: View {
     }
 }
 
-/// One active plan in full: overview → weeks → sessions → history.
-/// Selecting a historical version shows it read-only in the same slot.
+/// One active plan in full — illustrated, not narrated: a gradient hero
+/// with the goal and a filling progress bar, the weeks as rows of session
+/// glyphs, the sessions as tiles that open into their steps. Selecting a
+/// historical version shows it read-only in the same slot.
 private struct PlanSectionView: View {
     let active: PlanSummary
     @Bindable var model: PlansModel
@@ -302,51 +325,128 @@ private struct PlanSectionView: View {
 
     /// nil = the current (active) version.
     @State private var selectedVersionId: String?
+    @State private var progressShown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var shownId: String { selectedVersionId ?? active.id }
     private var shownPlan: Plan? { model.details[shownId] }
     private var chain: [PlanSummary] { model.chain(for: active) }
 
+    private var tint: Color {
+        StepArt.color(for: StepArt.art(for: "", domain: active.meta.domain))
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            overview
+        VStack(alignment: .leading, spacing: 16) {
+            hero
+                .cascadeIn(0)
+            actionsCard
+                .cascadeIn(1)
             if selectedVersionId != nil {
                 supersededBanner
+                    .ottoCard(padding: 12)
             }
             if let plan = shownPlan {
-                weeksSection(plan)
-                sessionsSection(plan)
+                weeksCard(plan)
+                    .cascadeIn(2)
+                sessionsCard(plan)
+                    .cascadeIn(3)
             } else {
                 Text("Loading…")
                     .font(.caption)
                     .foregroundStyle(OttoTheme.textTertiary)
             }
             if chain.count > 1 {
-                historySection
+                historyCard
+                    .cascadeIn(4)
             }
         }
-        .ottoCard(padding: 16)
-        .padding(.horizontal, 18)
         .task(id: shownId) { await model.loadDetail(id: shownId) }
     }
 
-    // MARK: - Overview: goal, horizon, sessions per week
+    // MARK: - Hero: the scene, the goal, the progress
 
-    private var overview: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+    private var hero: some View {
+        let art = StepArt.art(for: "", domain: active.meta.domain)
+        let weeks = PlansModel.weekCount(horizonDays: active.meta.horizonDays)
+        let week = min(max(1, PlansModel.week(of: active, now: Date())), weeks)
+        return ZStack(alignment: .bottomLeading) {
+            RoundedRectangle(cornerRadius: OttoTheme.cardRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [tint, tint.opacity(0.55)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(height: 180)
+            Image(systemName: art.symbol)
+                .font(.system(size: 62, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.35))
+                .modifier(PlanFloaty())
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(.top, 18)
+                .padding(.trailing, 20)
+            VStack(alignment: .leading, spacing: 10) {
                 Text(active.meta.goal)
-                    .font(.headline)
-                    .foregroundStyle(OttoTheme.textPrimary)
-                Spacer()
-                Text(active.meta.domain.uppercased())
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(OttoTheme.textTertiary)
+                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                HStack(spacing: 6) {
+                    heroChip("\(weeks) wks")
+                    if let plan = model.details[active.id] {
+                        let perWeek = Self.typicalPerWeek(plan)
+                        if perWeek > 0 { heroChip("\(perWeek)×/wk") }
+                    }
+                    heroChip("v\(active.meta.version)")
+                }
+                // The plan's clock, filling instead of talking.
+                VStack(alignment: .leading, spacing: 5) {
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(.white.opacity(0.25))
+                            Capsule()
+                                .fill(.white)
+                                .frame(
+                                    width: progressShown
+                                        ? proxy.size.width * CGFloat(week) / CGFloat(max(1, weeks))
+                                        : 0
+                                )
+                        }
+                    }
+                    .frame(height: 7)
+                    Text("Week \(week) of \(weeks)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                }
             }
-            Text(overviewLine)
-                .font(.caption)
-                .foregroundStyle(OttoTheme.textSecondary)
+            .padding(16)
+        }
+        .onAppear {
+            if reduceMotion {
+                progressShown = true
+                return
+            }
+            withAnimation(.spring(duration: 0.9, bounce: 0.1).delay(0.25)) {
+                progressShown = true
+            }
+        }
+    }
 
+    private func heroChip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(.white.opacity(0.22), in: Capsule())
+    }
+
+    // MARK: - Actions
+
+    private var actionsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 if let plan = model.details[active.id],
                    let next = PlanScheduling.nextOccurrence(in: plan, now: Date()) {
@@ -374,26 +474,14 @@ private struct PlanSectionView: View {
                         .overlay(Capsule().stroke(OttoTheme.hairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                Spacer(minLength: 0)
             }
-            .padding(.top, 6)
             Text("Adapt by voice — tell Otto what changed: an injury, missed days, a new schedule.")
                 .font(.caption2)
                 .foregroundStyle(OttoTheme.textTertiary)
         }
-    }
-
-    private var overviewLine: String {
-        let weeks = PlansModel.weekCount(horizonDays: active.meta.horizonDays)
-        var parts = ["\(weeks) weeks"]
-        if let plan = model.details[active.id] {
-            let perWeek = Self.typicalPerWeek(plan)
-            if perWeek > 0 { parts.append("\(perWeek) sessions/week") }
-        } else {
-            parts.append("\(active.scheduleEntryCount) sessions")
-        }
-        parts.append("week \(PlansModel.week(of: active, now: Date())) of \(weeks)")
-        parts.append("v\(active.meta.version)")
-        return parts.joined(separator: " · ")
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ottoCard(padding: 14)
     }
 
     private var supersededBanner: some View {
@@ -410,23 +498,47 @@ private struct PlanSectionView: View {
         }
     }
 
-    // MARK: - Week by week
+    // MARK: - Week by week: glyphs, not sentences
 
-    private func weeksSection(_ plan: Plan) -> some View {
-        section("WEEK BY WEEK") {
+    private func weeksCard(_ plan: Plan) -> some View {
+        let titlesById = Dictionary(
+            plan.sessions.map { ($0.id, $0.title) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let currentWeek = PlansModel.week(of: active, now: Date()) - 1
+        return section("WEEK BY WEEK") {
             ForEach(0..<PlansModel.weekCount(horizonDays: plan.meta.horizonDays), id: \.self) { week in
                 let entries = plan.schedule
                     .filter { $0.dayOffset / 7 == week }
                     .sorted { $0.dayOffset < $1.dayOffset }
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                HStack(spacing: 10) {
                     Text("W\(week + 1)")
                         .font(.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(OttoTheme.textSecondary)
-                        .frame(width: 34, alignment: .leading)
-                    Text(entries.isEmpty ? "rest" : Self.weekTitles(entries, plan: plan))
-                        .font(.caption)
-                        .foregroundStyle(entries.isEmpty ? OttoTheme.textTertiary : OttoTheme.textPrimary)
-                        .lineLimit(2)
+                        .foregroundStyle(week == currentWeek ? tint : OttoTheme.textSecondary)
+                        .frame(width: 30, alignment: .leading)
+                    if entries.isEmpty {
+                        Text("rest")
+                            .font(.caption)
+                            .foregroundStyle(OttoTheme.textTertiary)
+                    } else {
+                        // A glyph per session — the week readable at a glance.
+                        HStack(spacing: 6) {
+                            ForEach(Array(entries.prefix(6).enumerated()), id: \.offset) { _, entry in
+                                StepIllustration(
+                                    art: StepArt.art(
+                                        for: titlesById[entry.sessionId] ?? "",
+                                        domain: plan.meta.domain
+                                    ),
+                                    size: 26
+                                )
+                            }
+                            if entries.count > 6 {
+                                Text("+\(entries.count - 6)")
+                                    .font(.caption2)
+                                    .foregroundStyle(OttoTheme.textTertiary)
+                            }
+                        }
+                    }
                     Spacer(minLength: 0)
                     if Self.isDeloadWeek(entries) {
                         Text("DELOAD")
@@ -437,18 +549,24 @@ private struct PlanSectionView: View {
                             .background(OttoTheme.peach, in: Capsule())
                     }
                 }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .background(
+                    week == currentWeek ? tint.opacity(0.10) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
             }
         }
     }
 
     // MARK: - Sessions (tap to see steps)
 
-    private func sessionsSection(_ plan: Plan) -> some View {
+    private func sessionsCard(_ plan: Plan) -> some View {
         section("SESSIONS — tap for steps") {
             ForEach(plan.sessions) { session in
                 DisclosureGroup {
                     VStack(alignment: .leading, spacing: 10) {
-                        ForEach(session.steps) { step in
+                        ForEach(Array(session.steps.enumerated()), id: \.element.id) { index, step in
                             HStack(alignment: .center, spacing: 10) {
                                 StepIllustration(
                                     art: StepArt.art(
@@ -476,6 +594,7 @@ private struct PlanSectionView: View {
                                         .lineLimit(2)
                                 }
                             }
+                            .cascadeIn(index)
                         }
                     }
                     .padding(.top, 8)
@@ -485,15 +604,19 @@ private struct PlanSectionView: View {
                             art: StepArt.art(for: session.title, domain: plan.meta.domain),
                             size: 40
                         )
-                        Text(sessionShortTitle(session.title))
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(OttoTheme.textPrimary)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(sessionShortTitle(session.title))
+                                .font(.callout.weight(.medium))
+                                .foregroundStyle(OttoTheme.textPrimary)
+                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                TileChip(text: "\(session.estimatedMinutes) min", fill: OttoTheme.control)
+                                TileChip(text: "\(session.steps.count) steps", fill: OttoTheme.control)
+                            }
+                        }
                         Spacer()
-                        Text("\(session.estimatedMinutes) min · \(session.steps.count) steps")
-                            .font(.caption)
-                            .foregroundStyle(OttoTheme.textSecondary)
                     }
+                    .padding(.vertical, 2)
                 }
                 .tint(OttoTheme.textSecondary)
             }
@@ -502,7 +625,7 @@ private struct PlanSectionView: View {
 
     // MARK: - Version history
 
-    private var historySection: some View {
+    private var historyCard: some View {
         section("HISTORY") {
             ForEach(chain) { version in
                 Button {
@@ -532,13 +655,16 @@ private struct PlanSectionView: View {
         }
     }
 
+    /// Every section is its own quiet card now — no more one long wall.
     private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(OttoTheme.textTertiary)
             content()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ottoCard(padding: 14)
     }
 
     // MARK: - Derivations
@@ -566,16 +692,6 @@ private struct PlanSectionView: View {
             frequency[count, default: 0] += 1
         }
         return frequency.max { a, b in (a.value, a.key) < (b.value, b.key) }?.key ?? 0
-    }
-
-    private static func weekTitles(_ entries: [ScheduledSession], plan: Plan) -> String {
-        let titlesById = Dictionary(
-            plan.sessions.map { ($0.id, $0.title) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        return entries
-            .map { sessionShortTitle(titlesById[$0.sessionId] ?? $0.sessionId) }
-            .joined(separator: " · ")
     }
 
     private static func isDeloadWeek(_ entries: [ScheduledSession]) -> Bool {
