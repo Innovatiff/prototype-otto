@@ -67,7 +67,7 @@ final class GuidanceRuntime {
     private(set) var lastCompletedTitle: String?
 
     /// The session's Lock Screen / Dynamic Island presence.
-    private var liveActivity: Activity<OttoSessionAttributes>?
+    private var liveActivity: LiveActivityBox?
 
     func consumeCompletedTitle() -> String? {
         defer { lastCompletedTitle = nil }
@@ -285,24 +285,24 @@ final class GuidanceRuntime {
         let state = OttoSessionAttributes.ContentState(
             stepTitle: "Starting…", stepIndex: 0, totalSteps: totalSteps
         )
-        liveActivity = try? Activity.request(
+        let activity = try? Activity.request(
             attributes: OttoSessionAttributes(sessionTitle: title),
             content: ActivityContent(state: state, staleDate: nil)
         )
+        liveActivity = activity.map(LiveActivityBox.init)
     }
 
     private func updateLiveActivity(stepTitle: String, stepIndex: Int, totalSteps: Int) {
-        guard let activity = liveActivity else { return }
-        let state = OttoSessionAttributes.ContentState(
-            stepTitle: stepTitle, stepIndex: stepIndex, totalSteps: totalSteps
+        liveActivity?.update(
+            OttoSessionAttributes.ContentState(
+                stepTitle: stepTitle, stepIndex: stepIndex, totalSteps: totalSteps
+            )
         )
-        Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
     }
 
     private func endLiveActivity() {
-        guard let activity = liveActivity else { return }
+        liveActivity?.end()
         liveActivity = nil
-        Task { await activity.end(nil, dismissalPolicy: .immediate) }
     }
 
     private func teardown(early: Bool) async {
@@ -381,6 +381,32 @@ final class GuidanceRuntime {
         if case .finished = phase {
             phase = .idle
             lastSnapshot = nil
+        }
+    }
+}
+
+/// ActivityKit's Activity is documented thread-safe but not
+/// Sendable-annotated, so awaiting its nonisolated update/end from a
+/// MainActor task trips strict concurrency. This box owns the activity
+/// behind an @unchecked Sendable wall: detached tasks capture the BOX and
+/// touch the activity only from inside it — nothing non-Sendable ever
+/// crosses an isolation boundary.
+private final class LiveActivityBox: @unchecked Sendable {
+    private let activity: Activity<OttoSessionAttributes>
+
+    init(_ activity: Activity<OttoSessionAttributes>) {
+        self.activity = activity
+    }
+
+    func update(_ state: OttoSessionAttributes.ContentState) {
+        Task.detached { [self] in
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
+    }
+
+    func end() {
+        Task.detached { [self] in
+            await activity.end(nil, dismissalPolicy: .immediate)
         }
     }
 }
