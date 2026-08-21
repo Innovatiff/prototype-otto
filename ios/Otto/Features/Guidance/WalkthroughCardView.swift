@@ -12,55 +12,66 @@ struct WalkthroughCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            header
-            Rectangle()
-                .fill(OttoTheme.hairline)
-                .frame(height: 1)
+            headerTile
             stepsPreview
-            HStack {
-                Button("Not now") {
-                    onDismiss()
-                }
-                .font(.callout)
-                .foregroundStyle(OttoTheme.textSecondary)
-                Spacer()
-                InkPillButton(title: "Start walkthrough") {
-                    onStart()
-                }
+            Button("Not now") {
+                onDismiss()
             }
+            .font(.callout)
+            .foregroundStyle(OttoTheme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .ottoCard()
     }
 
-    private var header: some View {
-        HStack(spacing: 14) {
-            StepIllustration(
-                art: StepArt.art(for: session.title, domain: walkthrough.domain.rawValue),
-                size: 52
-            )
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.title)
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(OttoTheme.textPrimary)
-                    .lineLimit(2)
-                Text("\(session.estimatedMinutes) min · \(session.steps.count) steps")
-                    .font(.subheadline)
-                    .foregroundStyle(OttoTheme.textSecondary)
+    /// The reference tile: tinted box, short title, two chips, one round
+    /// play button. The steps preview cascades in underneath.
+    private var headerTile: some View {
+        let art = StepArt.art(for: session.title, domain: walkthrough.domain.rawValue)
+        let tint = StepArt.color(for: art)
+        return HStack(spacing: 12) {
+            Image(systemName: art.symbol)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 40, height: 40)
+                .background(OttoTheme.surface, in: Circle())
+            VStack(alignment: .leading, spacing: 7) {
+                Text(sessionShortTitle(session.title))
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(OttoTheme.ink)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    chip("\(session.estimatedMinutes) min")
+                    chip("\(session.steps.count) steps")
+                }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
             Button {
-                onDismiss()
+                onStart()
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(OttoTheme.textSecondary)
-                    .frame(width: 28, height: 28)
-                    .background(OttoTheme.control, in: Circle())
+                Image(systemName: "play.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 42, height: 42)
+                    .background(OttoTheme.ink, in: Circle())
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss walkthrough")
+            .buttonStyle(PressableButtonStyle(scale: 0.88))
+            .accessibilityLabel("Start \(session.title)")
         }
+        .padding(12)
+        .background(
+            tint.opacity(0.30),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+    }
+
+    private func chip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(OttoTheme.ink)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(OttoTheme.surface, in: Capsule())
     }
 
     private var stepsPreview: some View {

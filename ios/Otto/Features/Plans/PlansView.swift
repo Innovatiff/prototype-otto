@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The hub's Plans pane — viewing only; the guidance runtime is Phase 5.
-/// Overview, week-by-week, tappable sessions, version history, and the
-/// "Adapt this plan" entry point (adaptation is spoken, so it opens the
-/// mic).
+/// The Plans page, minimal: a tinted UP NEXT tile per plan — short title,
+/// two chips, one play button — and a compact row per plan underneath.
+/// Everything dense (goal, week by week, sessions, history) lives one tap
+/// away in the detail screen.
 struct PlansView: View {
     @Bindable var model: PlansModel
     /// Dismisses the hub and starts listening — the user says what changed.
@@ -13,31 +13,70 @@ struct PlansView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 24) {
                 if let error = model.errorText {
                     Text(error)
                         .font(.caption)
                         .foregroundStyle(.orange)
-                        .padding(.horizontal, 18)
                 }
                 if model.activePlans.isEmpty {
                     emptyState
                 } else {
-                    ForEach(model.activePlans) { active in
-                        PlanSectionView(
-                            active: active,
-                            model: model,
-                            onAdaptPlan: onAdaptPlan,
-                            onStartSession: onStartSession
-                        )
-                    }
+                    upNextSection
+                    plansSection
                 }
             }
+            .padding(.horizontal, 18)
             .padding(.vertical, 12)
         }
         .scrollIndicators(.hidden)
         .task { await model.load() }
         .refreshable { await model.load() }
+    }
+
+    // MARK: - Up next: one tile per plan, reference-style
+
+    private var upNextSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("UP NEXT")
+            ForEach(Array(model.activePlans.enumerated()), id: \.element.id) { index, active in
+                UpNextTile(
+                    active: active,
+                    model: model,
+                    onAdaptPlan: onAdaptPlan,
+                    onStartSession: onStartSession
+                )
+                .cascadeIn(index)
+            }
+        }
+    }
+
+    // MARK: - The plans themselves, one quiet row each
+
+    private var plansSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("YOUR PLANS")
+            ForEach(Array(model.activePlans.enumerated()), id: \.element.id) { index, active in
+                NavigationLink {
+                    PlanDetailView(
+                        active: active,
+                        model: model,
+                        onAdaptPlan: onAdaptPlan,
+                        onStartSession: onStartSession
+                    )
+                } label: {
+                    PlanRow(active: active, model: model)
+                }
+                .buttonStyle(.plain)
+                .cascadeIn(index + 2)
+            }
+        }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(OttoTheme.textTertiary)
     }
 
     private var emptyState: some View {
@@ -62,8 +101,198 @@ struct PlansView: View {
     }
 }
 
-/// One active plan: overview → weeks → sessions → history. Selecting a
-/// historical version shows it read-only in the same slot.
+// MARK: - Naming
+
+/// "Full Body B — Hinge & Pull Emphasis" → "Full Body B". The em-dash
+/// detail belongs to the detail screen, not a tile.
+func sessionShortTitle(_ title: String) -> String {
+    title.components(separatedBy: " — ").first?
+        .trimmingCharacters(in: .whitespaces) ?? title
+}
+
+// MARK: - The up-next tile (the reference design)
+
+/// A tinted box: short session title, "NN min" + day chips, one round
+/// play button. Tapping the box opens the plan; the button starts it.
+private struct UpNextTile: View {
+    let active: PlanSummary
+    @Bindable var model: PlansModel
+    let onAdaptPlan: () -> Void
+    let onStartSession: (Plan) -> Void
+
+    private var tint: Color {
+        StepArt.color(for: StepArt.art(for: "", domain: active.meta.domain))
+    }
+
+    var body: some View {
+        Group {
+            if let plan = model.details[active.id] {
+                if let next = PlanScheduling.nextOccurrence(in: plan, now: Date()) {
+                    NavigationLink {
+                        PlanDetailView(
+                            active: active,
+                            model: model,
+                            onAdaptPlan: onAdaptPlan,
+                            onStartSession: onStartSession
+                        )
+                    } label: {
+                        tile(plan: plan, next: next)
+                    }
+                    .buttonStyle(PressableButtonStyle(scale: 0.98))
+                }
+                // A finished plan has no next occurrence — no tile.
+            } else {
+                // Placeholder keeps the slot (and this view in the
+                // hierarchy, so the load below actually fires).
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(tint.opacity(0.16))
+                    .frame(height: 72)
+                    .overlay(ProgressView().tint(OttoTheme.textTertiary))
+            }
+        }
+        .task(id: active.id) { await model.loadDetail(id: active.id) }
+    }
+
+    private func tile(
+        plan: Plan, next: (entry: ScheduledSession, session: Session, date: Date)
+    ) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 9) {
+                Text(sessionShortTitle(next.session.title))
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(OttoTheme.ink)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    TileChip(text: "\(next.session.estimatedMinutes) min")
+                    TileChip(text: dayLabel(next.date))
+                }
+            }
+            Spacer(minLength: 8)
+            Button {
+                Haptics.press()
+                onStartSession(plan)
+            } label: {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 42, height: 42)
+                    .background(OttoTheme.ink, in: Circle())
+            }
+            .buttonStyle(PressableButtonStyle(scale: 0.88))
+            .accessibilityLabel("Start \(sessionShortTitle(next.session.title))")
+        }
+        .padding(14)
+        .background(
+            tint.opacity(0.30),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+    }
+
+    private func dayLabel(_ date: Date) -> String {
+        Foundation.Calendar.current.isDateInToday(date)
+            ? "Today"
+            : date.formatted(.dateTime.weekday(.abbreviated))
+    }
+}
+
+private struct TileChip: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(OttoTheme.ink)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(OttoTheme.surface, in: Capsule())
+    }
+}
+
+// MARK: - The plan row
+
+private struct PlanRow: View {
+    let active: PlanSummary
+    let model: PlansModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            StepIllustration(
+                art: StepArt.art(for: "", domain: active.meta.domain),
+                size: 44
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(active.meta.domain.capitalized)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(OttoTheme.textPrimary)
+                Text(active.meta.goal)
+                    .font(.caption)
+                    .foregroundStyle(OttoTheme.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            TileChip(
+                text: "Wk \(PlansModel.week(of: active, now: Date()))/"
+                    + "\(PlansModel.weekCount(horizonDays: active.meta.horizonDays))"
+            )
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(OttoTheme.textTertiary)
+        }
+        .ottoCard(padding: 13)
+    }
+}
+
+// MARK: - Appear cascade
+
+private struct CascadeIn: ViewModifier {
+    let index: Int
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 14)
+            .onAppear {
+                withAnimation(
+                    .spring(duration: 0.45, bounce: 0.22).delay(Double(index) * 0.06)
+                ) {
+                    shown = true
+                }
+            }
+    }
+}
+
+extension View {
+    fileprivate func cascadeIn(_ index: Int) -> some View { modifier(CascadeIn(index: index)) }
+}
+
+// MARK: - The detail screen (everything dense lives here)
+
+struct PlanDetailView: View {
+    let active: PlanSummary
+    @Bindable var model: PlansModel
+    let onAdaptPlan: () -> Void
+    let onStartSession: (Plan) -> Void
+
+    var body: some View {
+        ScrollView {
+            PlanSectionView(
+                active: active,
+                model: model,
+                onAdaptPlan: onAdaptPlan,
+                onStartSession: onStartSession
+            )
+            .padding(.vertical, 12)
+        }
+        .scrollIndicators(.hidden)
+        .background(OttoTheme.background)
+        .navigationTitle(active.meta.domain.capitalized)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// One active plan in full: overview → weeks → sessions → history.
+/// Selecting a historical version shows it read-only in the same slot.
 private struct PlanSectionView: View {
     let active: PlanSummary
     @Bindable var model: PlansModel
@@ -106,7 +335,7 @@ private struct PlanSectionView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(active.meta.goal)
-                    .font(.title3.weight(.semibold))
+                    .font(.headline)
                     .foregroundStyle(OttoTheme.textPrimary)
                 Spacer()
                 Text(active.meta.domain.uppercased())
@@ -126,6 +355,7 @@ private struct PlanSectionView: View {
                     } label: {
                         Label(Self.startLabel(next), systemImage: "play.fill")
                             .font(.callout.weight(.semibold))
+                            .lineLimit(1)
                             .foregroundStyle(Color.white)
                             .padding(.horizontal, 18)
                             .padding(.vertical, 9)
@@ -254,9 +484,10 @@ private struct PlanSectionView: View {
                             art: StepArt.art(for: session.title, domain: plan.meta.domain),
                             size: 40
                         )
-                        Text(session.title)
+                        Text(sessionShortTitle(session.title))
                             .font(.callout.weight(.medium))
                             .foregroundStyle(OttoTheme.textPrimary)
+                            .lineLimit(1)
                         Spacer()
                         Text("\(session.estimatedMinutes) min · \(session.steps.count) steps")
                             .font(.caption)
@@ -311,15 +542,17 @@ private struct PlanSectionView: View {
 
     // MARK: - Derivations
 
-    /// "Start Lower A" today, "Start Lower A · Thu" for a future one.
+    /// "Start Lower A" today, "Start Lower A · Thu" for a future one —
+    /// always the SHORT session name; the pill must never wrap.
     private static func startLabel(
         _ next: (entry: ScheduledSession, session: Session, date: Date)
     ) -> String {
+        let name = sessionShortTitle(next.session.title)
         if Foundation.Calendar.current.isDateInToday(next.date) {
-            return "Start \(next.session.title)"
+            return "Start \(name)"
         }
         let day = next.date.formatted(.dateTime.weekday(.abbreviated))
-        return "Start \(next.session.title) · \(day)"
+        return "Start \(name) · \(day)"
     }
 
     private static func typicalPerWeek(_ plan: Plan) -> Int {
@@ -339,7 +572,9 @@ private struct PlanSectionView: View {
             plan.sessions.map { ($0.id, $0.title) },
             uniquingKeysWith: { first, _ in first }
         )
-        return entries.map { titlesById[$0.sessionId] ?? $0.sessionId }.joined(separator: " · ")
+        return entries
+            .map { sessionShortTitle(titlesById[$0.sessionId] ?? $0.sessionId) }
+            .joined(separator: " · ")
     }
 
     private static func isDeloadWeek(_ entries: [ScheduledSession]) -> Bool {
