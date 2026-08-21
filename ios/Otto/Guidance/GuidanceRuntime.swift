@@ -117,7 +117,8 @@ final class GuidanceRuntime {
         // just means no references today.
         await flushOutbox()
         var references: [String: String] = [:]
-        if let client = makeClient(),
+        if !WalkthroughRun.isWalkthrough(planId),
+           let client = makeClient(),
            let summary = try? await client.planSummary(planId: planId) {
             references = summary.latestLoggedValues
         }
@@ -287,8 +288,11 @@ final class GuidanceRuntime {
             await health.finishWorkout(at: Date())
         }
         // The SessionRecord: disk first, then the server — a record must
-        // survive airplane mode and a force-quit alike.
-        if let snapshot = lastSnapshot, let planId = activePlanId {
+        // survive airplane mode and a force-quit alike. Walkthroughs have
+        // no plan document to record against; their run ends on-device.
+        if let snapshot = lastSnapshot, let planId = activePlanId,
+            !WalkthroughRun.isWalkthrough(planId)
+        {
             let completedAt = Date()
             let upload = SessionRecordUpload(
                 sessionId: snapshot.sessionId,

@@ -87,6 +87,9 @@ enum ConversationEvent: Sendable {
     /// weather, calendar, reminders, plans, a build in progress, an armed
     /// automation. Speaks-and-shows.
     case stageVisual(StageVisual)
+    /// A finished one-shot walkthrough — the offer card with its Start
+    /// button. The guidance runtime executes it; never spoken in full.
+    case walkthroughReady(Walkthrough)
     /// The server's effective conversation session for the last turn — the
     /// model persists it so a relaunch resumes the same conversation.
     case session(String)
@@ -737,6 +740,10 @@ actor VoiceLoop {
                 case .stage:
                     if let visual = event.data?.decoded(as: StageVisual.self) {
                         emit(.stageVisual(visual))
+                    }
+                case .walkthroughReady:
+                    if let walkthrough = event.data?.decoded(as: Walkthrough.self) {
+                        emit(.walkthroughReady(walkthrough))
                     }
                 }
             }

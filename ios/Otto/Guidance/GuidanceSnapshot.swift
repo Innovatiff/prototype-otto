@@ -1,5 +1,23 @@
 import Foundation
 
+/// One-shot walkthroughs run through the same guidance machinery as plan
+/// sessions, wearing a sentinel planId that carries their domain. Nothing
+/// server-side exists for them: no record upload, no summary fetch — the
+/// prefix is how every seam tells the two apart.
+enum WalkthroughRun {
+    static let planIdPrefix = "walkthrough:"
+
+    static func planId(domain: String) -> String { planIdPrefix + domain }
+
+    static func isWalkthrough(_ planId: String) -> Bool {
+        planId.hasPrefix(planIdPrefix)
+    }
+
+    static func domain(from planId: String) -> String {
+        String(planId.dropFirst(planIdPrefix.count))
+    }
+}
+
 /// The persisted truth of a running guided session — written to disk on
 /// EVERY transition, so a killed app can offer to pick up exactly where the
 /// user left off. Codable via OttoCoding (ISO dates).
@@ -20,6 +38,9 @@ struct GuidanceSnapshot: Codable, Equatable, Sendable {
     /// "8 reps"). Kept raw and lossless; Step 8's overload logic parses.
     var loggedValues: [String: String]
     var pausedAt: Date?
+    /// Walkthrough runs only: the full session, carried inline so resume
+    /// never needs a plan that doesn't exist. Nil for plan sessions.
+    var template: Session? = nil
 }
 
 extension GuidanceSnapshot {

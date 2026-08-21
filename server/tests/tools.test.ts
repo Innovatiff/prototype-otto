@@ -31,6 +31,7 @@ test("exactly the specified tools, snake_case, unique", () => {
     "propose_calendar_event",
     "propose_calendar_move",
     "generate_plan",
+    "create_walkthrough",
     "adapt_plan",
     "draft_message",
     "create_automation",
@@ -96,6 +97,23 @@ test("the spec's product rules are stated where the model reads them", () => {
     "productivity",
     "learning",
   ]);
+});
+
+test("create_walkthrough is the DOING tool: one session, guided, never read aloud", () => {
+  assert.deepEqual(properties("create_walkthrough").domain?.enum, [
+    "cooking",
+    "repair",
+    "errand",
+    "fitness",
+    "chores",
+    "learning",
+    "other",
+  ]);
+  assert.match(tool("create_walkthrough").description ?? "", /DOING tool/);
+  assert.match(tool("create_walkthrough").description ?? "", /generate_plan instead for multi-week/);
+  assert.match(tool("create_walkthrough").description ?? "", /ONE clarifying question/);
+  assert.match(tool("create_walkthrough").description ?? "", /never\s+read the steps aloud/i);
+  assert.deepEqual(tool("create_walkthrough").input_schema.required, ["goal", "domain"]);
 });
 
 test("show_visual is the stage: four kinds, speak-the-judgment contract", () => {

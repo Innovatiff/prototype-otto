@@ -140,6 +140,18 @@ struct ConversationView: View {
                         removal: .move(edge: .leading).combined(with: .opacity)
                     )
                 )
+            } else if let offer = model.walkthroughOffer {
+                WalkthroughCardView(
+                    walkthrough: offer,
+                    onStart: {
+                        Haptics.press()
+                        Task { await model.startWalkthrough() }
+                    },
+                    onDismiss: { model.dismissWalkthrough() }
+                )
+                .padding(.horizontal, 16)
+                .frame(maxHeight: 400)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if let card = model.briefCard {
                 BriefCardView(card: card) {
                     model.dismissBrief()
@@ -171,8 +183,8 @@ struct ConversationView: View {
     /// stage visual. Building and armed-automation moments are compact, so
     /// the orb stays big behind them.
     private var orbIsBig: Bool {
-        model.briefCard == nil && model.planCard == nil && !tourVisualActive
-            && !stageDataVisualActive
+        model.briefCard == nil && model.planCard == nil && model.walkthroughOffer == nil
+            && !tourVisualActive && !stageDataVisualActive
     }
 
     private var tourVisualActive: Bool {

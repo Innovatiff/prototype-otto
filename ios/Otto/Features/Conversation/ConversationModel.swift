@@ -208,6 +208,32 @@ final class ConversationModel {
         )
     }
 
+    // MARK: - Walkthroughs (one-shot guided sessions)
+
+    /// A finished walkthrough waiting for the user's go — the offer card
+    /// with its Start button. Cleared on start, dismiss, or replacement.
+    private(set) var walkthroughOffer: Walkthrough?
+
+    /// Start button / "start" by voice: hand the session to the guidance
+    /// runtime under a sentinel planId — no plan document exists.
+    func startWalkthrough() async {
+        guard let offer = walkthroughOffer else { return }
+        guard guidance.phase == .idle else { return }
+        guard await prepareForTurn() else { return }
+        withAnimation(.snappy) { walkthroughOffer = nil }
+        Haptics.press()
+        await guidance.start(
+            planId: WalkthroughRun.planId(domain: offer.domain.rawValue),
+            domain: offer.domain.rawValue,
+            template: offer.session,
+            progression: nil
+        )
+    }
+
+    func dismissWalkthrough() {
+        withAnimation(.snappy) { walkthroughOffer = nil }
+    }
+
     private func handleGuidanceResumeReply(_ text: String) async {
         guard let snapshot = pendingGuidanceResume else { return }
         pendingGuidanceResume = nil
@@ -219,6 +245,19 @@ final class ConversationModel {
             return
         }
         guard await prepareForTurn() else { return }
+        // A walkthrough carries its whole session in the snapshot — there
+        // is no plan to reload, so resume goes straight to the runtime.
+        if WalkthroughRun.isWalkthrough(snapshot.planId), let template = snapshot.template {
+            Haptics.press()
+            await guidance.start(
+                planId: snapshot.planId,
+                domain: WalkthroughRun.domain(from: snapshot.planId),
+                template: template,
+                progression: nil,
+                resumeFrom: snapshot
+            )
+            return
+        }
         await plansModel.load()
         await plansModel.loadDetail(id: snapshot.planId)
         guard let plan = plansModel.details[snapshot.planId],
@@ -654,6 +693,11 @@ final class ConversationModel {
             appendOttoToken(token)
         case .ottoDone:
             ottoTurnOpen = false
+            // A build that never resolved (refusal, failure) must not leave
+            // its gears turning past the turn that started them.
+            if stageVisual?.kind == .building {
+                clearStageVisual()
+            }
             if guidance.answeringQuestion {
                 // An off-script answer just finished — return to the step.
                 Task { await self.guidance.answerFinished() }
@@ -677,10 +721,23 @@ final class ConversationModel {
             Task { await self.runBrief() }
         case .stageVisual(let visual):
             showStageVisual(visual)
+        case .walkthroughReady(let walkthrough):
+            // The gears resolve into the offer card.
+            clearStageVisual()
+            Haptics.success()
+            withAnimation(.spring(duration: 0.55, bounce: 0.18)) {
+                walkthroughOffer = walkthrough
+            }
         case .guidanceUtterance(let text):
             Task { await self.guidance.handleUtterance(text) }
         case .guidanceStartRequested:
-            Task { await self.startTodaysSession() }
+            // "Start" with a walkthrough on offer means THAT walkthrough;
+            // otherwise it's today's plan session.
+            if walkthroughOffer != nil {
+                Task { await self.startWalkthrough() }
+            } else {
+                Task { await self.startTodaysSession() }
+            }
         case .planProgress(let stage):
             withAnimation(.snappy) {
                 planPhase = stage == .designing ? .designing : .scheduling

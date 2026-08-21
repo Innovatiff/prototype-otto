@@ -15,6 +15,7 @@ import {
   Task,
   TaskIntent,
   TaskStatus,
+  WalkthroughDomain,
   zId,
   type ListItem,
   type StageVisual,
@@ -52,6 +53,10 @@ import {
 } from "../plans/store.js";
 import { summaryLine } from "../plans/summarize.js";
 import { cachedCurrentWeather, DEFAULT_LAT, DEFAULT_LON } from "../services/weather/index.js";
+import {
+  generateWalkthrough,
+  WalkthroughGenerationError,
+} from "../walkthrough/generate.js";
 
 // ── Inputs (mirror tools/definitions.ts; the model is validated, not trusted) ──
 
@@ -494,6 +499,65 @@ export const AdaptPlanInput = z.object({
   change: z.string().min(1).max(1000),
 });
 
+export const CreateWalkthroughInput = z.object({
+  goal: z.string().min(5).max(500),
+  domain: WalkthroughDomain,
+  notes: z.string().min(1).max(500).optional(),
+});
+
+/**
+ * One-shot guided walkthrough: gears on stage while it builds, the offer
+ * card (with Start) to the screen as an event, one spoken line from the
+ * model. Hazardous tasks come back as a refusal the model relays.
+ */
+async function createWalkthroughTool(
+  input: z.infer<typeof CreateWalkthroughInput>,
+  ctx: ToolContext,
+): Promise<ToolExecution> {
+  emitStage(ctx, { kind: "building", label: "Building your walkthrough" });
+  try {
+    const generated = await generateWalkthrough({
+      userId: ctx.uid,
+      turnId: ctx.turnId,
+      goal: input.goal,
+      domain: input.domain,
+      notes: input.notes,
+      now: ctx.now,
+    });
+    if (generated.outcome === "refused") {
+      return {
+        result: JSON.stringify({
+          refused: true,
+          reason: generated.reason,
+          speak: "Relay this refusal in one plain sentence, including the alternative.",
+        }),
+      };
+    }
+    ctx.emit({ type: "walkthrough_ready", data: generated.walkthrough });
+    return {
+      result: JSON.stringify({
+        created: true,
+        title: generated.walkthrough.session.title,
+        steps: generated.walkthrough.session.steps.length,
+        estimatedMinutes: generated.walkthrough.session.estimatedMinutes,
+        speak:
+          "ONE line: it's ready, the honest minutes, and they can say " +
+          "'start' or tap Start whenever. The steps are on their screen — " +
+          "never read them aloud.",
+      }),
+    };
+  } catch (err) {
+    if (err instanceof WalkthroughGenerationError) {
+      logWarning("walkthrough_gave_up", { userId: ctx.uid, errors: err.validationErrors });
+      return failure(
+        "The walkthrough didn't come together; nothing was built. Tell the " +
+          "user plainly and offer to try again.",
+      );
+    }
+    throw err;
+  }
+}
+
 /**
  * Load the active plan, patch it (sonnet diff, never regeneration), persist
  * the new version superseding the old, and put the updated plan on screen.
@@ -795,6 +859,14 @@ export async function executeToolUse(
         return parsed.success
           ? await adaptPlanTool(parsed.data, ctx)
           : failure("Invalid adapt_plan input: domain and change are required.");
+      }
+      case "create_walkthrough": {
+        const parsed = CreateWalkthroughInput.safeParse(rawInput);
+        return parsed.success
+          ? await createWalkthroughTool(parsed.data, ctx)
+          : failure(
+              "Invalid create_walkthrough input: goal (specific) and domain are required.",
+            );
       }
       case "propose_calendar_event": {
         const parsed = ProposeCalendarEventInput.safeParse(rawInput);

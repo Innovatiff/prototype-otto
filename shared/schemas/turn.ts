@@ -63,6 +63,11 @@ export const TurnEventType = z.enum([
   /** Generation failed after its retry; the client clears progress UI. */
   "plan_failed",
   /**
+   * A finished one-shot Walkthrough. Renders as an offer card with a Start
+   * button; the guidance runtime executes it. NEVER read aloud in full.
+   */
+  "walkthrough_ready",
+  /**
    * A StageVisual: the illustration to show while Otto speaks — weather,
    * calendar, reminders, plans, a build in progress, an armed automation.
    */

@@ -251,6 +251,42 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
     },
   },
   {
+    name: "create_walkthrough",
+    description:
+      "Build a step-by-step guided walkthrough the user can EXECUTE right " +
+      "now with Otto talking them through it hands-free — cook a dish, " +
+      "change a tire, fix a leaky faucet, assemble furniture, pack for a " +
+      "trip, a focused errand run. This is the DOING tool: one session, " +
+      "done today. Use generate_plan instead for multi-week programs. " +
+      "Don't interview: ask at most ONE clarifying question (servings? " +
+      "which car?) and only if the task is unbuildable without it. The " +
+      "finished walkthrough appears on screen with a Start button — never " +
+      "read the steps aloud. Say it's ready, the honest minutes, and that " +
+      "they can say 'start' whenever. If the tool refuses (hazardous " +
+      "task), relay the refusal plainly with its alternative.",
+    input_schema: {
+      type: "object",
+      properties: {
+        goal: {
+          type: "string",
+          description: "What they want to do, specific: 'chicken alfredo for two'.",
+        },
+        domain: {
+          type: "string",
+          enum: ["cooking", "repair", "errand", "fitness", "chores", "learning", "other"],
+          description: "Closest fit — drives the on-screen illustration.",
+        },
+        notes: {
+          type: "string",
+          description:
+            "Anything they mentioned that shapes the steps: servings, skill, " +
+            "tools on hand, dietary limits. Omit when nothing was said.",
+        },
+      },
+      required: ["goal", "domain"],
+    },
+  },
+  {
     name: "adapt_plan",
     description:
       "Patch the user's ACTIVE plan when life changed — an injury, missed " +

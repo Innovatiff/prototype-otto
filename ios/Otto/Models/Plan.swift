@@ -779,3 +779,43 @@ struct SubstitutionCandidate: Codable, Hashable, Sendable {
         try container.encode(self.skips, forKey: .skips)
     }
 }
+
+struct Walkthrough: Codable, Hashable, Sendable {
+    var domain: WalkthroughDomain
+    var session: Session
+
+    init(
+        domain: WalkthroughDomain,
+        session: Session
+    ) {
+        self.domain = domain
+        self.session = session
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case domain
+        case session
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.domain = try container.decode(WalkthroughDomain.self, forKey: .domain)
+        self.session = try container.decode(Session.self, forKey: .session)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.domain, forKey: .domain)
+        try container.encode(self.session, forKey: .session)
+    }
+}
+
+enum WalkthroughDomain: String, Codable, Hashable, Sendable, CaseIterable {
+    case cooking
+    case repair
+    case errand
+    case fitness
+    case chores
+    case learning
+    case other
+}

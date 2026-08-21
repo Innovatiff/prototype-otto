@@ -79,6 +79,33 @@ export const ScheduledSession = z.object({
 });
 export type ScheduledSession = z.infer<typeof ScheduledSession>;
 
+/**
+ * Domains a one-shot walkthrough can wear — free of the multi-week plan
+ * domains; these drive the client's illustrations and nothing else.
+ */
+export const WalkthroughDomain = z.enum([
+  "cooking",
+  "repair",
+  "errand",
+  "fitness",
+  "chores",
+  "learning",
+  "other",
+]);
+export type WalkthroughDomain = z.infer<typeof WalkthroughDomain>;
+
+/**
+ * A one-shot guided walkthrough: a single session Otto builds on the spot
+ * — cook this dish, change this tire, fix the faucet — and talks the user
+ * through step by step. Never persisted: it rides the turn stream as a
+ * walkthrough_ready event and lives in the guidance runtime.
+ */
+export const Walkthrough = z.object({
+  domain: WalkthroughDomain,
+  session: Session,
+});
+export type Walkthrough = z.infer<typeof Walkthrough>;
+
 /** Descriptive metadata for a plan. */
 export const PlanMeta = z.object({
   domain: z.string(),

@@ -57,7 +57,10 @@ actor GuidanceSession {
                 completedSteps: [],
                 skippedSteps: [],
                 loggedValues: [:],
-                pausedAt: nil
+                pausedAt: nil,
+                // Walkthroughs have no plan to reload — the snapshot IS the
+                // session, so a killed app can still offer the resume.
+                template: WalkthroughRun.isWalkthrough(planId) ? session : nil
             )
         }
     }

@@ -17,7 +17,7 @@ enum StepArt {
         // Strength & gym
         (["squat", "deadlift", "bench", "press", "row", "curl", "lunge", "dumbbell", "barbell", "lift", "pull up", "pullup", "push up", "pushup", "chin up"], "dumbbell.fill", 3),
         (["warm up", "warmup", "stretch", "mobility", "cool down", "cooldown", "foam"], "figure.flexibility", 1),
-        (["run", "jog", "sprint", "treadmill"], "figure.run", 0),
+        (["run", "jog", "sprint", "treadmill", "cardio"], "figure.run", 0),
         (["walk", "steps"], "figure.walk", 1),
         (["bike", "cycling", "spin"], "figure.outdoor.cycle", 0),
         (["swim"], "figure.pool.swim", 0),
@@ -26,9 +26,17 @@ enum StepArt {
         (["rest", "recover", "breathe", "breathing"], "moon.zzz.fill", 2),
         // Kitchen
         (["rice", "pasta", "noodle", "grain"], "fork.knife", 5),
-        (["cook", "meal", "recipe", "chop", "prep the", "kitchen", "bake", "roast", "simmer"], "frying.pan.fill", 3),
+        (["cook", "meal", "recipe", "chop", "prep the", "kitchen", "bake", "roast", "simmer", "sauce", "season", "boil", "sear", "saute", "sauté", "marinate"], "frying.pan.fill", 3),
         (["coffee", "tea"], "cup.and.saucer.fill", 3),
         (["water", "hydrate"], "drop.fill", 0),
+        // Repairs & maintenance
+        (["tire", "jack ", "lug", "wrench", "screw", "drill", "bolt", "oil change", "brake", "tighten", "loosen", "torque", "repair", "install the", "replace the"], "wrench.and.screwdriver.fill", 4),
+        // "car " with the trailing space so "cardio" can never match it.
+        (["car ", "engine", "hood", "battery"], "car.fill", 0),
+        (["clean", "wash", "wipe", "vacuum", "scrub", "laundry"], "bubbles.and.sparkles", 0),
+        (["paint", "sand ", "prime"], "paintbrush.fill", 4),
+        // Errands
+        (["buy", "store", "shop", "pick up", "pickup", "grocery", "groceries", "purchase"], "bag.fill", 5),
         // Learning & work
         (["read", "chapter", "book"], "book.fill", 0),
         (["write", "journal", "notes", "essay"], "pencil.and.outline", 4),
@@ -60,6 +68,14 @@ enum StepArt {
             return Art(symbol: "book.fill", paletteIndex: 0)
         case "productivity":
             return Art(symbol: "brain.head.profile", paletteIndex: 2)
+        case "cooking":
+            return Art(symbol: "frying.pan.fill", paletteIndex: 3)
+        case "repair":
+            return Art(symbol: "wrench.and.screwdriver.fill", paletteIndex: 4)
+        case "errand":
+            return Art(symbol: "bag.fill", paletteIndex: 5)
+        case "chores":
+            return Art(symbol: "house.fill", paletteIndex: 1)
         default:
             return Art(symbol: "sparkles", paletteIndex: 2)
         }
