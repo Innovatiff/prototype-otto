@@ -323,6 +323,13 @@ struct ConversationView: View {
                             .foregroundStyle(OttoTheme.textPrimary)
                             .lineSpacing(3)
                             .textSelection(.enabled)
+                            .contextMenu {
+                                Button {
+                                    model.reportLastResponse()
+                                } label: {
+                                    Label("Report this response", systemImage: "flag")
+                                }
+                            }
                     }
                     if let notice = latestNotice {
                         Text(notice)

@@ -882,6 +882,12 @@ final class ConversationModel {
             clearStageVisual()
             Haptics.success()
             pendingExperienceTour = experience
+        case .entitlementGate(let feature, let requiredTier):
+            clearStageVisual()
+            Haptics.caution()
+            withAnimation(.snappy) {
+                paywallContext = PaywallContext(feature: feature, requiredTier: requiredTier)
+            }
         case .guidanceUtterance(let text):
             Task { await self.guidance.handleUtterance(text) }
         case .guidanceStartRequested:
@@ -1021,7 +1027,64 @@ final class ConversationModel {
     private static let ordinals = ["first", "second", "third", "fourth", "fifth"]
 
     /// Routes a captured utterance to whichever confirmation flow is live.
+    /// Onboarding borrows the capture pipeline for its three questions;
+    /// while set, every captured utterance goes to it and nowhere else.
+    var onboardingCapture: ((String) -> Void)?
+
+    /// Opens the conversation for onboarding's questions — with the loop
+    /// active, each announce returns to listening on its own.
+    func beginOnboardingVoice() async {
+        guard await prepareForTurn() else { return }
+        await voiceLoop.startConversation()
+    }
+
+    /// One question: the next final utterance is captured, never a turn.
+    func onboardingAsk(_ line: String) async {
+        await voiceLoop.armUtteranceCapture()
+        await voiceLoop.announce(line)
+    }
+
+    func endOnboardingVoice() async {
+        onboardingCapture = nil
+        await voiceLoop.disarmUtteranceCapture()
+        await voiceLoop.stopConversation()
+    }
+
+    /// A typed turn started by the app itself (onboarding's activation
+    /// moment) — same pipeline as the composer, no UI involved.
+    func submitProgrammatic(_ text: String) {
+        Task {
+            guard await self.prepareForTurn() else { return }
+            await self.voiceLoop.submitText(text)
+        }
+    }
+
+    /// "Report a response" → the server-side moderation queue.
+    func reportLastResponse() {
+        guard let otto = entries.last(where: { $0.role == .otto })?.text, !otto.isEmpty else {
+            return
+        }
+        let userLine = entries.last(where: { $0.role == .user })?.text
+        guard let client = makeClient() else { return }
+        Task {
+            do {
+                try await client.reportResponse(content: otto, context: userLine)
+                self.appendNotice("Reported — thank you. We review these.")
+            } catch {
+                self.appendNotice("Couldn't send the report: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// A server gate fired mid-turn; the view presents the matching
+    /// contextual paywall. Settable so the sheet can dismiss it.
+    var paywallContext: PaywallContext?
+
     private func handleCapturedReply(_ text: String) async {
+        if let handler = onboardingCapture {
+            handler(text)
+            return
+        }
         if pendingSessionFeedback != nil {
             await handleSessionFeedbackReply(text)
         } else if draftStage != .idle {

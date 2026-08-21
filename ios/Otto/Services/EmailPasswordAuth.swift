@@ -37,3 +37,16 @@ final class EmailPasswordAuth: AuthProvider, @unchecked Sendable {
         return try await user.getIDToken()
     }
 }
+
+extension EmailPasswordAuth {
+    /// Sign in with Apple lands on the same Firebase account system: the
+    /// coordinator gets an Apple identity token + nonce, this exchanges it.
+    func signInWithApple(idToken: String, rawNonce: String) async throws {
+        let credential = OAuthProvider.credential(
+            withProviderID: "apple.com",
+            idToken: idToken,
+            rawNonce: rawNonce
+        )
+        _ = try await auth.signIn(with: credential)
+    }
+}

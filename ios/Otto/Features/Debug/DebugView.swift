@@ -62,6 +62,35 @@ final class DebugModel {
         signedInUserId = auth.currentUserId
     }
 
+    // MARK: - Third-party AI consent (revocable; server enforces)
+
+    var aiConsentGranted =
+        UserDefaults.standard.string(forKey: "otto.consent.version") != nil
+
+    func setConsent(_ granted: Bool) async {
+        guard let url = URL(string: serverURLString), url.scheme != nil,
+            auth.currentUserId != nil
+        else {
+            authMessage = "Sign in first."
+            return
+        }
+        let client = APIClient(baseURL: url, auth: auth)
+        do {
+            if granted {
+                try await client.grantConsent(version: OnboardingModel.consentVersion)
+                UserDefaults.standard.set(
+                    OnboardingModel.consentVersion, forKey: "otto.consent.version")
+            } else {
+                try await client.revokeConsent()
+                UserDefaults.standard.removeObject(forKey: "otto.consent.version")
+            }
+            aiConsentGranted = granted
+        } catch {
+            authMessage = "Consent change failed: \(error.localizedDescription)"
+            aiConsentGranted = !granted
+        }
+    }
+
     /// Permanent account deletion (App Store 5.1.1(v)): the server erases
     /// every document, deletes the auth user, and we sign out locally.
     /// The auth token is already invalid afterward — sign-out never fails
@@ -144,7 +173,7 @@ final class DebugModel {
             statusLine = "done — tier: \(tier), model: \(modelName)"
         case .taskCreated, .taskUpdated, .draft, .calendarProposal,
              .planProgress, .planReady, .planFailed, .stage, .walkthroughReady,
-             .experienceReady:
+             .experienceReady, .entitlement:
             statusLine = "(\(event.type.rawValue))"
         case .error:
             statusLine = "Server error event: \(event.data?.stringValue ?? "unknown")"
@@ -170,6 +199,7 @@ struct DebugView: View {
     var body: some View {
         // Pushed from the Account tab — no NavigationStack of its own.
         Form {
+            aiSection
             briefSection
             calendarSyncSection
             serverSection
@@ -248,6 +278,33 @@ struct DebugView: View {
     }
 
     @ViewBuilder
+    /// The revocable half of the onboarding consent screen. Turning this
+    /// off disables every model feature — the server refuses on its own.
+    private var aiSection: some View {
+        Section {
+            Toggle(
+                "Third-party AI (Claude)",
+                isOn: Binding(
+                    get: { model.aiConsentGranted },
+                    set: { granted in Task { await model.setConsent(granted) } }
+                )
+            )
+            Link(
+                "Manage subscription",
+                destination: URL(string: "itms-apps://apps.apple.com/account/subscriptions")!
+            )
+        } header: {
+            Text("Otto's brain")
+        } footer: {
+            Text(
+                "Your messages, enabled calendar context, and remembered facts "
+                    + "are processed by Anthropic to generate Otto's answers. Never "
+                    + "used to train models. Turning this off disables briefs, "
+                    + "conversation, plans, and automations until re-enabled."
+            )
+        }
+    }
+
     private var accountSection: some View {
         Section("Account") {
             if let uid = model.signedInUserId {

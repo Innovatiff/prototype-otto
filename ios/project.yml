@@ -16,6 +16,9 @@ packages:
   firebase-ios-sdk:
     url: https://github.com/firebase/firebase-ios-sdk.git
     from: 12.0.0
+  purchases-ios:
+    url: https://github.com/RevenueCat/purchases-ios.git
+    from: 5.0.0
 
 schemes:
   Otto:
@@ -62,6 +65,9 @@ targets:
         BGTaskSchedulerPermittedIdentifiers: [com.alamfernandez.otto.calendar-refresh]
         # The guided-session Live Activity (Lock Screen + Dynamic Island).
         NSSupportsLiveActivities: true
+        # RevenueCat PUBLIC SDK key (safe client-side). Replace with the
+        # key from app.revenuecat.com; purchases stay disabled until then.
+        REVENUECAT_API_KEY: "YOUR_REVENUECAT_PUBLIC_KEY"
         # The otto:// scheme — widget taps and App Intents deep-link with it.
         CFBundleURLTypes:
           - CFBundleURLName: com.alamfernandez.otto
@@ -84,6 +90,9 @@ targets:
         # The App Group the widget and share extension read/write.
         com.apple.security.application-groups:
           - group.com.alamfernandez.otto
+        # Sign in with Apple (onboarding's first step).
+        com.apple.developer.applesignin:
+          - Default
         # DELIBERATELY ABSENT: aps-environment. With the Push capability
         # declared in SystemCapabilities below, Xcode's automatic signing
         # injects aps-environment itself at signing time; declaring it
@@ -111,6 +120,8 @@ targets:
           enabled: 1
         com.apple.ApplicationGroups.iOS:
           enabled: 1
+        com.apple.SignInWithApple:
+          enabled: 1
     dependencies:
       - package: firebase-ios-sdk
         product: FirebaseAuth
@@ -118,6 +129,8 @@ targets:
         product: FirebaseCore
       - package: firebase-ios-sdk
         product: FirebaseMessaging
+      - package: purchases-ios
+        product: RevenueCat
       - target: OttoWidgets
         embed: true
       - target: OttoShare

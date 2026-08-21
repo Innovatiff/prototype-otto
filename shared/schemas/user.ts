@@ -9,6 +9,10 @@ import { isoDateTime, zId } from "./common.js";
  * string rather than an enum so a first name needs no schema change; "none"
  * is the one special value.
  */
+/** The subscription ladder, as the webhook writes it. */
+export const SubscriptionTierValue = z.enum(["free", "lite", "pro", "max"]);
+export type SubscriptionTierValue = z.infer<typeof SubscriptionTierValue>;
+
 export const UserProfile = z.object({
   ownerId: zId,
   addressTerm: z.string().min(1).max(40).default("Boss"),
@@ -18,7 +22,7 @@ export const UserProfile = z.object({
 
   // ── Subscription (written ONLY by the RevenueCat webhook) ─────────
   /** Authoritative tier; absent = free. The server gates on THIS. */
-  subscriptionTier: z.enum(["free", "lite", "pro", "max"]).optional(),
+  subscriptionTier: SubscriptionTierValue.optional(),
   /** First purchase instant — the billing anniversary the plan meter uses. */
   subscriptionAnchorAt: isoDateTime.optional(),
   subscriptionExpiresAt: isoDateTime.optional(),

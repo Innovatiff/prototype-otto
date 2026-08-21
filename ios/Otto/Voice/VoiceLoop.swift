@@ -94,6 +94,8 @@ enum ConversationEvent: Sendable {
     /// The device presents it as an illustrated spoken tour after the
     /// model's handoff line finishes.
     case experienceReady(Experience)
+    /// A server entitlement gate fired — show the contextual upsell.
+    case entitlementGate(feature: String, requiredTier: String)
     /// The server's effective conversation session for the last turn — the
     /// model persists it so a relaunch resumes the same conversation.
     case session(String)
@@ -752,6 +754,12 @@ actor VoiceLoop {
                 case .experienceReady:
                     if let experience = event.data?.decoded(as: Experience.self) {
                         emit(.experienceReady(experience))
+                    }
+                case .entitlement:
+                    if let payload = event.data?.objectValue,
+                       let feature = payload["feature"]?.stringValue,
+                       let requiredTier = payload["requiredTier"]?.stringValue {
+                        emit(.entitlementGate(feature: feature, requiredTier: requiredTier))
                     }
                 }
             }

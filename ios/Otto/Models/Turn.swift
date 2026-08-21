@@ -108,6 +108,7 @@ enum TurnEventType: String, Codable, Hashable, Sendable, CaseIterable {
     /// Wire value: `"experience_ready"`.
     case experienceReady = "experience_ready"
     case stage
+    case entitlement
     case done
     case error
 }

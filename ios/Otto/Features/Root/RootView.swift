@@ -36,8 +36,12 @@ struct RootView: View {
     var calendarSync: CalendarSyncService
     var automations: AutomationsModel
     var experiences: ExperiencesModel
+    var subscriptions: SubscriptionModel
+    var onboarding: OnboardingModel
 
     @State private var tab: Tab = .home
+    @State private var showOnboarding = !OnboardingModel.isComplete
+    @State private var showActivationPaywall = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -92,6 +96,50 @@ struct RootView: View {
         }
         .onChange(of: tab) { _, _ in
             Haptics.tick()
+        }
+        // First run: value before payment, always in this order.
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView(model: onboarding) {
+                showOnboarding = false
+            }
+            .interactiveDismissDisabled()
+        }
+        // A server gate fired mid-conversation → the upsell about THAT.
+        .sheet(item: $model.paywallContext) { context in
+            PaywallView(model: subscriptions, context: context) {
+                model.paywallContext = nil
+            }
+        }
+        // The post-activation paywall: only after the user has watched Otto
+        // produce something real, and only once.
+        .sheet(isPresented: $showActivationPaywall) {
+            PaywallView(model: subscriptions, context: nil) {
+                showActivationPaywall = false
+            }
+        }
+        .onChange(of: model.planCard) { _, card in
+            maybeShowActivationPaywall(card != nil)
+        }
+        .onChange(of: model.briefCard) { _, card in
+            maybeShowActivationPaywall(card != nil)
+        }
+        .onChange(of: model.signedIn) { _, _ in
+            subscriptions.configureIfNeeded()
+        }
+        .task {
+            subscriptions.configureIfNeeded()
+        }
+    }
+
+    private func maybeShowActivationPaywall(_ hasArtifact: Bool) {
+        guard hasArtifact,
+            UserDefaults.standard.bool(forKey: OnboardingModel.paywallPendingKey)
+        else { return }
+        UserDefaults.standard.set(false, forKey: OnboardingModel.paywallPendingKey)
+        Task {
+            // Let the artifact land visually before the ask.
+            try? await Task.sleep(for: .seconds(2))
+            showActivationPaywall = true
         }
     }
 

@@ -42,6 +42,8 @@ struct OttoApp: App {
     @State private var calendarSync: CalendarSyncService
     @State private var automations: AutomationsModel
     @State private var experiences: ExperiencesModel
+    @State private var subscriptions: SubscriptionModel
+    @State private var onboarding: OnboardingModel
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -58,23 +60,26 @@ struct OttoApp: App {
         let tasksModel = TasksModel(auth: auth)
         let plansModel = PlansModel(auth: auth)
         let calendarService = CalendarService()
+        let conversationModel = ConversationModel(
+            auth: auth,
+            tasksModel: tasksModel,
+            plansModel: plansModel,
+            calendarService: calendarService
+        )
         _settings = State(initialValue: DebugModel(auth: auth))
         _tasks = State(initialValue: tasksModel)
         _plans = State(initialValue: plansModel)
-        _conversation = State(
-            initialValue: ConversationModel(
-                auth: auth,
-                tasksModel: tasksModel,
-                plansModel: plansModel,
-                calendarService: calendarService
-            )
-        )
+        _conversation = State(initialValue: conversationModel)
         _memory = State(initialValue: MemoryModel(auth: auth))
         _calendarSync = State(
             initialValue: CalendarSyncService(auth: auth, calendar: calendarService)
         )
         _automations = State(initialValue: AutomationsModel(auth: auth))
         _experiences = State(initialValue: ExperiencesModel(auth: auth))
+        _subscriptions = State(initialValue: SubscriptionModel(auth: auth))
+        _onboarding = State(
+            initialValue: OnboardingModel(conversation: conversationModel, auth: auth)
+        )
     }
 
     var body: some Scene {
@@ -87,7 +92,9 @@ struct OttoApp: App {
                 plans: plans,
                 calendarSync: calendarSync,
                 automations: automations,
-                experiences: experiences
+                experiences: experiences,
+                subscriptions: subscriptions,
+                onboarding: onboarding
             )
                 // Otto lives in the light: white stage, ink type, real color.
                 .preferredColorScheme(.light)

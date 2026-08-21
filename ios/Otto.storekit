@@ -1,0 +1,187 @@
+{
+  "identifier" : "6E1F2A30-0000-4000-9000-OTTO00000001",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "OTTOSUBSGROUP1",
+      "localizations" : [
+
+      ],
+      "name" : "Otto",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "59.99",
+          "familyShareable" : true,
+          "groupNumber" : 1,
+          "internalID" : "OTTO-MAX-M",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Pro for the household, 3 seats.",
+              "displayName" : "Otto Max",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.alamfernandez.otto.max.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Max Monthly",
+          "subscriptionGroupID" : "OTTOSUBSGROUP1",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "499.99",
+          "familyShareable" : true,
+          "groupNumber" : 1,
+          "internalID" : "OTTO-MAX-A",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Pro for the household, 3 seats.",
+              "displayName" : "Otto Max (Annual)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.alamfernandez.otto.max.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Max Annual",
+          "subscriptionGroupID" : "OTTOSUBSGROUP1",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "29.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "OTTO-PRO-M",
+          "introductoryOffer" : {
+            "internalID" : "OTTO-PRO-M-TRIAL",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "An assistant for your life.",
+              "displayName" : "Otto Pro",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.alamfernandez.otto.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pro Monthly",
+          "subscriptionGroupID" : "OTTOSUBSGROUP1",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "249.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "OTTO-PRO-A",
+          "introductoryOffer" : {
+            "internalID" : "OTTO-PRO-A-TRIAL",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "An assistant for your life.",
+              "displayName" : "Otto Pro (Annual)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.alamfernandez.otto.pro.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Pro Annual",
+          "subscriptionGroupID" : "OTTOSUBSGROUP1",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "14.99",
+          "familyShareable" : false,
+          "groupNumber" : 3,
+          "internalID" : "OTTO-LITE-M",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "An assistant for you.",
+              "displayName" : "Otto Lite",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.alamfernandez.otto.lite.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Lite Monthly",
+          "subscriptionGroupID" : "OTTOSUBSGROUP1",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "119.99",
+          "familyShareable" : false,
+          "groupNumber" : 3,
+          "internalID" : "OTTO-LITE-A",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "An assistant for you.",
+              "displayName" : "Otto Lite (Annual)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.alamfernandez.otto.lite.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Lite Annual",
+          "subscriptionGroupID" : "OTTOSUBSGROUP1",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
