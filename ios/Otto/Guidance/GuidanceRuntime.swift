@@ -1,3 +1,4 @@
+import ActivityKit
 import Foundation
 import Observation
 import SwiftUI
@@ -65,6 +66,9 @@ final class GuidanceRuntime {
     /// post-session feedback ask consumes it exactly once.
     private(set) var lastCompletedTitle: String?
 
+    /// The session's Lock Screen / Dynamic Island presence.
+    private var liveActivity: Activity<OttoSessionAttributes>?
+
     func consumeCompletedTitle() -> String? {
         defer { lastCompletedTitle = nil }
         return lastCompletedTitle
@@ -110,6 +114,7 @@ final class GuidanceRuntime {
         sessionTitle = template.title
         sessionDomain = domain
         totalSteps = template.steps.count
+        startLiveActivity(title: template.title, totalSteps: template.steps.count)
         stepIndex = resumeFrom?.currentStepIndex ?? 0
         currentStep = nil
         resting = false
@@ -244,6 +249,7 @@ final class GuidanceRuntime {
             if index > 0 {
                 Haptics.step()
             }
+            updateLiveActivity(stepTitle: step.title, stepIndex: index, totalSteps: total)
             withAnimation(.snappy) {
                 stepIndex = index
                 totalSteps = total
@@ -272,10 +278,38 @@ final class GuidanceRuntime {
         }
     }
 
+    // MARK: - Live Activity (the session on the Lock Screen)
+
+    private func startLiveActivity(title: String, totalSteps: Int) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        let state = OttoSessionAttributes.ContentState(
+            stepTitle: "Starting…", stepIndex: 0, totalSteps: totalSteps
+        )
+        liveActivity = try? Activity.request(
+            attributes: OttoSessionAttributes(sessionTitle: title),
+            content: ActivityContent(state: state, staleDate: nil)
+        )
+    }
+
+    private func updateLiveActivity(stepTitle: String, stepIndex: Int, totalSteps: Int) {
+        guard let activity = liveActivity else { return }
+        let state = OttoSessionAttributes.ContentState(
+            stepTitle: stepTitle, stepIndex: stepIndex, totalSteps: totalSteps
+        )
+        Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
+    }
+
+    private func endLiveActivity() {
+        guard let activity = liveActivity else { return }
+        liveActivity = nil
+        Task { await activity.end(nil, dismissalPolicy: .immediate) }
+    }
+
     private func teardown(early: Bool) async {
         if !early {
             lastCompletedTitle = sessionTitle
         }
+        endLiveActivity()
         eventsTask?.cancel()
         eventsTask = nil
         displayTask?.cancel()

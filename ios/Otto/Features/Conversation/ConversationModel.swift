@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import WidgetKit
 
 /// One row in the conversation transcript.
 struct TranscriptEntry: Identifiable {
@@ -128,12 +129,16 @@ final class ConversationModel {
         guard auth.currentUserId != nil else {
             upNextLabel = nil
             upNextPlan = nil
+            WidgetUpNext.save(nil)
+            WidgetCenter.shared.reloadTimelines(ofKind: "OttoUpNext")
             return
         }
         await plansModel.load()
         guard let active = plansModel.activePlans.first else {
             upNextLabel = nil
             upNextPlan = nil
+            WidgetUpNext.save(nil)
+            WidgetCenter.shared.reloadTimelines(ofKind: "OttoUpNext")
             return
         }
         await plansModel.loadDetail(id: active.id)
@@ -142,6 +147,8 @@ final class ConversationModel {
         else {
             upNextLabel = nil
             upNextPlan = nil
+            WidgetUpNext.save(nil)
+            WidgetCenter.shared.reloadTimelines(ofKind: "OttoUpNext")
             return
         }
         upNextPlan = plan
@@ -150,6 +157,17 @@ final class ConversationModel {
             ? "\(next.session.title) · today"
             : "\(next.session.title) · \(next.date.formatted(.dateTime.weekday(.wide)))"
         withAnimation(.snappy) { upNextLabel = label }
+        // The home-screen widget mirrors the chip.
+        WidgetUpNext.save(
+            WidgetUpNext(
+                title: sessionShortTitle(next.session.title),
+                minutes: next.session.estimatedMinutes,
+                dayLabel: Foundation.Calendar.current.isDateInToday(next.date)
+                    ? "Today"
+                    : next.date.formatted(.dateTime.weekday(.abbreviated))
+            )
+        )
+        WidgetCenter.shared.reloadTimelines(ofKind: "OttoUpNext")
     }
 
     func startUpNext() {
@@ -487,11 +505,13 @@ final class ConversationModel {
         }
         pushService.start()
         // A push tap that launched the app parked its deep link; replay it
-        // now that the loop is live.
+        // now that the loop is live. Cold-launch App Intents park the same
+        // way (scenePhase fired before activation) — consume them here.
         if let parked = pendingDeepLink {
             pendingDeepLink = nil
             handleDeepLink(parked)
         }
+        consumePendingIntent()
         refreshCalendarContext()
         if UserDefaults.standard.bool(forKey: Self.briefEnabledKey) {
             let (hour, minute) = storedWakeTime()
@@ -608,8 +628,61 @@ final class ConversationModel {
         case "otto://review":
             // Sunday's weekly review push — the week's mirror.
             Task { await runBrief(mode: .weekly) }
+        case "otto://listen":
+            // Widget mic / "Ask Otto" intent — straight into listening.
+            if state == .idle, briefTourCard == nil {
+                toggleVoice()
+            }
+        case "otto://start":
+            // Widget play / "Start my session" — walkthrough wins, else
+            // today's plan session (same rule as saying "launch").
+            if walkthroughOffer != nil {
+                Task { await self.startWalkthrough() }
+            } else {
+                Task { await self.startTodaysSession() }
+            }
         default:
             break
+        }
+    }
+
+    /// Siri/Shortcuts/Action Button handoff, consumed on every foreground.
+    func consumePendingIntent() {
+        guard activated, let intent = PendingIntent.consume() else { return }
+        switch intent {
+        case "listen":
+            handleDeepLink("otto://listen")
+        case "start":
+            handleDeepLink("otto://start")
+        case "brief":
+            handleDeepLink("otto://brief")
+        default:
+            break
+        }
+    }
+
+    /// Shared-in and offline captures become real tasks whenever the app
+    /// foregrounds; failures go straight back in the queue.
+    func drainCaptures() async {
+        let items = CaptureQueue.drain()
+        guard !items.isEmpty else { return }
+        guard let client = makeClient() else {
+            CaptureQueue.requeue(items)
+            return
+        }
+        var failed: [String] = []
+        for text in items {
+            do {
+                try await client.captureTask(text)
+            } catch {
+                failed.append(text)
+            }
+        }
+        CaptureQueue.requeue(failed)
+        if items.count > failed.count {
+            let saved = items.count - failed.count
+            appendNotice(saved == 1 ? "Saved 1 capture." : "Saved \(saved) captures.")
+            await tasksModel.load()
         }
     }
 

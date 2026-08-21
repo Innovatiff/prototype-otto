@@ -39,6 +39,9 @@ targets:
       - path: Otto
         excludes:
           - Info.plist
+      # App Group plumbing + Live Activity attributes, shared with the
+      # widget and share-extension targets.
+      - path: Shared
     # A real (generated, gitignored) Info.plist instead of INFOPLIST_KEY_
     # build settings: UIBackgroundModes is an array those keys can't express,
     # and Step 7's HealthKit strings land here too.
@@ -57,6 +60,12 @@ targets:
         # The background calendar refresh task; must match
         # CalendarSyncService.backgroundTaskId.
         BGTaskSchedulerPermittedIdentifiers: [com.alamfernandez.otto.calendar-refresh]
+        # The guided-session Live Activity (Lock Screen + Dynamic Island).
+        NSSupportsLiveActivities: true
+        # The otto:// scheme — widget taps and App Intents deep-link with it.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.alamfernandez.otto
+            CFBundleURLSchemes: [otto]
         NSMicrophoneUsageDescription: "Otto listens so you can talk to it."
         NSSpeechRecognitionUsageDescription: "Otto transcribes your speech on this device to understand you."
         # Required for a physical device to reach the dev server on the Mac's
@@ -72,6 +81,9 @@ targets:
       path: Otto/Otto.entitlements
       properties:
         com.apple.developer.healthkit: true
+        # The App Group the widget and share extension read/write.
+        com.apple.security.application-groups:
+          - group.com.alamfernandez.otto
         # DELIBERATELY ABSENT: aps-environment. With the Push capability
         # declared in SystemCapabilities below, Xcode's automatic signing
         # injects aps-environment itself at signing time; declaring it
@@ -97,6 +109,8 @@ targets:
           enabled: 1
         com.apple.BackgroundModes:
           enabled: 1
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1
     dependencies:
       - package: firebase-ios-sdk
         product: FirebaseAuth
@@ -104,6 +118,10 @@ targets:
         product: FirebaseCore
       - package: firebase-ios-sdk
         product: FirebaseMessaging
+      - target: OttoWidgets
+        embed: true
+      - target: OttoShare
+        embed: true
     settings:
       base:
         # Matches the iOS app registered in the Firebase console
@@ -123,6 +141,77 @@ targets:
         # time-sensitive, and HealthKit entitlements (the free personal team
         # cannot sign them). The matching Apple ID must be signed into
         # Xcode → Settings → Accounts.
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: TSZLLRZJXH
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_EMIT_LOC_STRINGS: NO
+
+  # Home-screen widget + the guided-session Live Activity.
+  OttoWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: OttoWidgets
+      - path: Shared
+    info:
+      path: OttoWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Otto
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: OttoWidgets/OttoWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.alamfernandez.otto
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.alamfernandez.otto.widgets
+        SWIFT_VERSION: "6.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: TSZLLRZJXH
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_EMIT_LOC_STRINGS: NO
+
+  # Share sheet → the capture queue. No network, no sign-in: capture that
+  # never fails.
+  OttoShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: OttoShare
+      - path: Shared
+        excludes:
+          # The share sheet only needs the capture queue.
+          - OttoSessionAttributes.swift
+    info:
+      path: OttoShare/Info.plist
+      properties:
+        CFBundleDisplayName: Otto
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+    entitlements:
+      path: OttoShare/OttoShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.alamfernandez.otto
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.alamfernandez.otto.share
+        SWIFT_VERSION: "6.0"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: TSZLLRZJXH
         TARGETED_DEVICE_FAMILY: "1"

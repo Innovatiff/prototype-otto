@@ -34,3 +34,36 @@ extension APIClient {
         _ = try await jsonRequest(path: "tasks/\(id)", method: "DELETE")
     }
 }
+
+extension APIClient {
+    /// A queue-drained capture (share extension, offline note) becomes a
+    /// real capture task, no model in the loop.
+    func captureTask(_ text: String) async throws {
+        struct Body: Encodable {
+            struct Trigger: Encodable { let type: String }
+            let intent: String
+            let title: String
+            let items: [String]
+            let trigger: Trigger
+            let verification: String
+            let status: String
+        }
+        let title = String(text.prefix(200))
+        let body: Data
+        do {
+            body = try OttoCoding.encoder.encode(
+                Body(
+                    intent: "capture",
+                    title: title,
+                    items: [],
+                    trigger: Body.Trigger(type: "none"),
+                    verification: "inline",
+                    status: "active"
+                )
+            )
+        } catch {
+            throw APIError.decoding(underlying: error)
+        }
+        _ = try await jsonRequest(path: "tasks", method: "POST", body: body)
+    }
+}

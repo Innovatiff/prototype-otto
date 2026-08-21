@@ -92,6 +92,10 @@ struct OttoApp: App {
                 // Otto lives in the light: white stage, ink type, real color.
                 .preferredColorScheme(.light)
                 .tint(OttoTheme.ink)
+                // Widget taps and the otto:// scheme land here.
+                .onOpenURL { url in
+                    conversation.handleDeepLink(url.absoluteString)
+                }
         }
         // The sync half of the automations contract: a (throttled) push of
         // the compressed 48-hour view on every foreground, and a queued
@@ -101,6 +105,10 @@ struct OttoApp: App {
             switch phase {
             case .active:
                 Task { await calendarSync.syncIfNeeded() }
+                // Siri/Action Button handoffs and shared-in captures both
+                // resolve the moment the app is actually on screen.
+                conversation.consumePendingIntent()
+                Task { await conversation.drainCaptures() }
             case .background:
                 calendarSync.scheduleBackgroundRefresh()
             default:
