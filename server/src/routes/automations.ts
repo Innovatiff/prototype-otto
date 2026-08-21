@@ -29,6 +29,7 @@ import {
   loadOwnedDelivery,
   loadOwnerDeliveries,
   loadRecentDeliveries,
+  openTimeSuggestion,
   storeDeliverer,
   updateDelivery,
 } from "../automations/deliver.js";
@@ -136,14 +137,24 @@ automationsUserRouter.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const uid = requireUid(req);
-      const [automations, quiet] = await Promise.all([
+      const [automations, quiet, deliveries] = await Promise.all([
         loadOwnerAutomations(uid),
         loadOwnerQuietHours(uid),
+        loadOwnerDeliveries(uid, 120).catch((): [] => []),
       ]);
+      const now = new Date();
+      // The engagement log, read positively: fixed automations whose opens
+      // consistently trail their fire time get a one-tap move suggestion.
+      const suggestions = automations
+        .filter((automation) => automation.enabled)
+        .map((automation) => openTimeSuggestion(automation, deliveries, now))
+        .filter((suggestion): suggestion is NonNullable<typeof suggestion> => suggestion !== null)
+        .slice(0, 10);
       const body: AutomationListResponse = {
         automations: sortForManagement(automations).slice(0, 100),
         quietHoursStart: quiet.start,
         quietHoursEnd: quiet.end,
+        ...(suggestions.length > 0 ? { suggestions } : {}),
       };
       res.json(body);
     } catch (err) {

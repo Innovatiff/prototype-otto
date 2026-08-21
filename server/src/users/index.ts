@@ -27,3 +27,14 @@ export async function loadUserProfile(uid: string, now: Date): Promise<UserProfi
   }
   return defaultProfile(uid, now);
 }
+
+/**
+ * The user chose their term of address (or chose none). Marks it
+ * confirmed so the ask-once nudge never fires again.
+ */
+export async function setAddressTerm(uid: string, term: string): Promise<void> {
+  await db()
+    .collection(COLLECTIONS.users)
+    .doc(uid)
+    .set({ addressTerm: term, addressTermSet: true }, { merge: true });
+}

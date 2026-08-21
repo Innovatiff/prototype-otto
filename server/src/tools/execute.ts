@@ -60,6 +60,7 @@ import {
 } from "../plans/store.js";
 import { summaryLine } from "../plans/summarize.js";
 import { cachedCurrentWeather, DEFAULT_LAT, DEFAULT_LON } from "../services/weather/index.js";
+import { setAddressTerm } from "../users/index.js";
 import {
   generateWalkthrough,
   WalkthroughGenerationError,
@@ -707,6 +708,28 @@ export const ShowVisualInput = z.object({
   kind: z.enum(["weather", "calendar", "reminders", "plans"]),
 });
 
+export const SetAddressTermInput = z.object({
+  term: z.string().min(1).max(40),
+});
+
+async function setAddressTermTool(
+  input: z.infer<typeof SetAddressTermInput>,
+  ctx: ToolContext,
+): Promise<ToolExecution> {
+  const term = input.term.trim();
+  if (term.length === 0) {
+    return failure("Empty term — pass the term or 'none'.");
+  }
+  await setAddressTerm(ctx.uid, term.toLowerCase() === "none" ? "none" : term);
+  return {
+    result: JSON.stringify({
+      saved: true,
+      term,
+      speak: "Acknowledge in a few words and move on. It applies from the next turn.",
+    }),
+  };
+}
+
 /** Emits a stage TurnEvent, typed at the seam. */
 function emitStage(ctx: ToolContext, visual: StageVisual): void {
   ctx.emit({ type: "stage", data: visual });
@@ -890,6 +913,12 @@ export async function executeToolUse(
 ): Promise<ToolExecution> {
   try {
     switch (name) {
+      case "set_address_term": {
+        const parsed = SetAddressTermInput.safeParse(rawInput);
+        return parsed.success
+          ? await setAddressTermTool(parsed.data, ctx)
+          : failure("Invalid set_address_term input: term (or 'none') is required.");
+      }
       case "show_visual": {
         const parsed = ShowVisualInput.safeParse(rawInput);
         return parsed.success

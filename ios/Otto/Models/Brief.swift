@@ -189,6 +189,12 @@ struct BriefListCount: Codable, Hashable, Sendable {
     }
 }
 
+enum BriefMode: String, Codable, Hashable, Sendable, CaseIterable {
+    case morning
+    case evening
+    case weekly
+}
+
 struct BriefPlanSession: Codable, Hashable, Sendable {
     var planId: String
     var sessionId: String
@@ -255,19 +261,25 @@ struct BriefRecord: Codable, Hashable, Sendable {
     var spoken: String
     var summary: String
     var createdAt: Date
+    var chapters: [BriefChapter]?
+    var card: BriefCard?
 
     init(
         ownerId: String,
         date: String,
         spoken: String,
         summary: String,
-        createdAt: Date
+        createdAt: Date,
+        chapters: [BriefChapter]? = nil,
+        card: BriefCard? = nil
     ) {
         self.ownerId = ownerId
         self.date = date
         self.spoken = spoken
         self.summary = summary
         self.createdAt = createdAt
+        self.chapters = chapters
+        self.card = card
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -276,6 +288,8 @@ struct BriefRecord: Codable, Hashable, Sendable {
         case spoken
         case summary
         case createdAt
+        case chapters
+        case card
     }
 
     init(from decoder: any Decoder) throws {
@@ -285,6 +299,8 @@ struct BriefRecord: Codable, Hashable, Sendable {
         self.spoken = try container.decode(String.self, forKey: .spoken)
         self.summary = try container.decode(String.self, forKey: .summary)
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.chapters = try container.decodeIfPresent([BriefChapter].self, forKey: .chapters)
+        self.card = try container.decodeIfPresent(BriefCard.self, forKey: .card)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -294,6 +310,8 @@ struct BriefRecord: Codable, Hashable, Sendable {
         try container.encode(self.spoken, forKey: .spoken)
         try container.encode(self.summary, forKey: .summary)
         try container.encode(self.createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(self.chapters, forKey: .chapters)
+        try container.encodeIfPresent(self.card, forKey: .card)
     }
 }
 
@@ -303,19 +321,22 @@ struct BriefRequest: Codable, Hashable, Sendable {
     var timezone: String
     var lat: Double?
     var lon: Double?
+    var mode: BriefMode?
 
     init(
         events: [CalendarEvent],
         conflicts: [Conflict],
         timezone: String,
         lat: Double? = nil,
-        lon: Double? = nil
+        lon: Double? = nil,
+        mode: BriefMode? = nil
     ) {
         self.events = events
         self.conflicts = conflicts
         self.timezone = timezone
         self.lat = lat
         self.lon = lon
+        self.mode = mode
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -324,6 +345,7 @@ struct BriefRequest: Codable, Hashable, Sendable {
         case timezone
         case lat
         case lon
+        case mode
     }
 
     init(from decoder: any Decoder) throws {
@@ -333,6 +355,7 @@ struct BriefRequest: Codable, Hashable, Sendable {
         self.timezone = try container.decode(String.self, forKey: .timezone)
         self.lat = try container.decodeIfPresent(Double.self, forKey: .lat)
         self.lon = try container.decodeIfPresent(Double.self, forKey: .lon)
+        self.mode = try container.decodeIfPresent(BriefMode.self, forKey: .mode)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -342,6 +365,7 @@ struct BriefRequest: Codable, Hashable, Sendable {
         try container.encode(self.timezone, forKey: .timezone)
         try container.encodeIfPresent(self.lat, forKey: .lat)
         try container.encodeIfPresent(self.lon, forKey: .lon)
+        try container.encodeIfPresent(self.mode, forKey: .mode)
     }
 }
 

@@ -15,6 +15,7 @@ import Foundation
 struct UserProfile: Codable, Hashable, Sendable {
     var ownerId: String
     var addressTerm: String
+    var addressTermSet: Bool?
     var createdAt: Date
     var plansCreatedThisMonth: Int?
     var plansCountMonth: String?
@@ -25,6 +26,7 @@ struct UserProfile: Codable, Hashable, Sendable {
     init(
         ownerId: String,
         addressTerm: String = "Boss",
+        addressTermSet: Bool? = nil,
         createdAt: Date,
         plansCreatedThisMonth: Int? = nil,
         plansCountMonth: String? = nil,
@@ -34,6 +36,7 @@ struct UserProfile: Codable, Hashable, Sendable {
     ) {
         self.ownerId = ownerId
         self.addressTerm = addressTerm
+        self.addressTermSet = addressTermSet
         self.createdAt = createdAt
         self.plansCreatedThisMonth = plansCreatedThisMonth
         self.plansCountMonth = plansCountMonth
@@ -45,6 +48,7 @@ struct UserProfile: Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case ownerId
         case addressTerm
+        case addressTermSet
         case createdAt
         case plansCreatedThisMonth
         case plansCountMonth
@@ -57,6 +61,7 @@ struct UserProfile: Codable, Hashable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.ownerId = try container.decode(String.self, forKey: .ownerId)
         self.addressTerm = try container.decodeIfPresent(String.self, forKey: .addressTerm) ?? "Boss"
+        self.addressTermSet = try container.decodeIfPresent(Bool.self, forKey: .addressTermSet)
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
         self.plansCreatedThisMonth = try container.decodeIfPresent(Int.self, forKey: .plansCreatedThisMonth)
         self.plansCountMonth = try container.decodeIfPresent(String.self, forKey: .plansCountMonth)
@@ -69,6 +74,7 @@ struct UserProfile: Codable, Hashable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(self.ownerId, forKey: .ownerId)
         try container.encode(self.addressTerm, forKey: .addressTerm)
+        try container.encodeIfPresent(self.addressTermSet, forKey: .addressTermSet)
         try container.encode(self.createdAt, forKey: .createdAt)
         try container.encodeIfPresent(self.plansCreatedThisMonth, forKey: .plansCreatedThisMonth)
         try container.encodeIfPresent(self.plansCountMonth, forKey: .plansCountMonth)

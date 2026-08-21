@@ -147,12 +147,24 @@ const morningBrief: AutomationHandler = async (automation, ctx) => {
   try {
     const summaryStartedAt = Date.now();
     const { summary, usage } = await summarizeBrief(synthesis.spoken, automation.ownerId);
+    // The playable halves ride along so the push tap serves THIS brief
+    // instantly — POST /brief returns it instead of regenerating.
     await storeBrief({
       ownerId: automation.ownerId,
       date: context.date,
       spoken: synthesis.spoken,
       summary,
       createdAt: ctx.now.toISOString(),
+      chapters: synthesis.chapters,
+      card: {
+        date: context.date,
+        weather: context.weather ?? undefined,
+        events: request.events,
+        conflicts: request.conflicts,
+        dueTasks: context.dueTasks,
+        lists: context.lists,
+        planSessions: context.planSessions,
+      },
     });
     await recordCostEvent({
       userId: automation.ownerId,

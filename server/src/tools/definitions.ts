@@ -44,6 +44,26 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
     },
   },
   {
+    name: "set_address_term",
+    description:
+      "Save what to call the owner. Use it when they tell you what they'd " +
+      "like to be called — a name, a title, or nothing ('none' for no term " +
+      "of address, ever). Ask ONLY when the dynamic context says no " +
+      "confirmed term is on file, ONCE, casually, woven into a natural " +
+      "moment — never as an interrogation, never twice. After saving, " +
+      "acknowledge in a few words and move on.",
+    input_schema: {
+      type: "object",
+      properties: {
+        term: {
+          type: "string",
+          description: "The term exactly as they want it, or 'none'.",
+        },
+      },
+      required: ["term"],
+    },
+  },
+  {
     name: "create_task",
     description:
       "Create exactly ONE task. A multi-item errand is ONE list task with " +
@@ -261,7 +281,10 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
       "and NEVER guess a budget. Ask for what's missing ONE question per " +
       "turn, three questions maximum, each with a concrete suggestion " +
       "('Beach or city? Casco Viejo eats well on a budget.'). When they " +
-      "already said everything, skip straight to the call. AFTER the tool " +
+      "already said everything, skip straight to the call. Check MEMORIES " +
+      "before asking anything — skip questions memory already answers, and " +
+      "reference past tastes ('Casco Viejo vibe again, or somewhere new?'). " +
+      "AFTER the tool " +
       "returns, say ONE handoff line only ('Here's the evening.') — the " +
       "device narrates and illustrates the whole plan itself; do not " +
       "describe it, do not read any items, do not list prices. The device " +
@@ -299,7 +322,9 @@ export const OTTO_TOOLS: readonly Anthropic.Tool[] = [
       "trip, a focused errand run. This is the DOING tool: one session, " +
       "done today. Use generate_plan instead for multi-week programs. " +
       "Don't interview: ask at most ONE clarifying question (servings? " +
-      "which car?) and only if the task is unbuildable without it. The " +
+      "which car?) and only if the task is unbuildable without it — and " +
+      "fill `notes` from MEMORIES first (skill level, portions, equipment, " +
+      "past feedback) instead of asking. The " +
       "finished walkthrough appears on screen with a Start button — never " +
       "read the steps aloud. Say it's ready, the honest minutes, and that " +
       "they can say 'start' whenever. If the tool refuses (hazardous " +

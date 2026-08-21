@@ -12,6 +12,9 @@ import { isoDateTime, zId } from "./common.js";
 export const UserProfile = z.object({
   ownerId: zId,
   addressTerm: z.string().min(1).max(40).default("Boss"),
+  /** True once the USER chose the term (or chose none) — until then the
+   *  default is in effect and Otto asks, once, what to call them. */
+  addressTermSet: z.boolean().optional(),
   createdAt: isoDateTime,
   /**
    * Plan metering (subscriptions land in Phase 7; counting starts now).

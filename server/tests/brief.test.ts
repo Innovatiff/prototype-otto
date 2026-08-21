@@ -11,13 +11,17 @@ import {
   planSessionsToday,
   wallDate,
 } from "../src/brief/gather.js";
+import { isServableBrief } from "../src/brief/store.js";
 import {
   BRIEF_SYSTEM_PROMPT,
   BRIEF_TOOL,
+  EVENING_SYSTEM_PROMPT,
   joinChapters,
   parseChapters,
   serializeContext,
+  WEEKLY_SYSTEM_PROMPT,
 } from "../src/brief/synthesize.js";
+import { weeklyFactsText } from "../src/brief/weekly.js";
 
 const TS = "2026-08-18T12:00:00.000Z";
 
@@ -322,4 +326,79 @@ test("joinChapters flows the chapters into one clean spoken text", () => {
     { kind: "reminders", spoken: "Nothing due today." },
   ]);
   assert.equal(joined, "Nine degrees and raining. Nothing due today.");
+});
+
+// ── The bookends: evening, weekly, and the instant path ─────────────
+
+test("the evening and weekly prompts carry their load-bearing rules", () => {
+  assert.ok(EVENING_SYSTEM_PROMPT.includes("Under 80 words TOTAL"));
+  assert.ok(EVENING_SYSTEM_PROMPT.includes("Tomorrow's first commitment"));
+  assert.ok(EVENING_SYSTEM_PROMPT.includes("marked (tomorrow)"));
+  assert.ok(EVENING_SYSTEM_PROMPT.includes("No weather, no pep talk"));
+  assert.ok(WEEKLY_SYSTEM_PROMPT.includes("THE WEEK'S FACTS"));
+  assert.ok(WEEKLY_SYSTEM_PROMPT.includes("Under 100 words TOTAL"));
+  assert.ok(WEEKLY_SYSTEM_PROMPT.includes("no scolding"));
+});
+
+test("events past today's wall date are tagged (tomorrow) in the context", () => {
+  const context = contextFixture();
+  context.request.events.push({
+    id: "e3",
+    title: "Standup",
+    startsAt: "2026-08-19T13:00:00.000Z", // next wall day in Toronto
+    endsAt: "2026-08-19T13:15:00.000Z",
+    isAllDay: false,
+  });
+  const text = serializeContext(context);
+  assert.ok(text.includes("Standup (tomorrow)"));
+  assert.ok(!text.includes("Dentist @ Mississauga (tomorrow)"));
+});
+
+test("weekly facts serialize with counted numbers only", () => {
+  const text = weeklyFactsText({
+    sessionsDone: 3,
+    tasksCleared: 7,
+    voyagesPlanned: 1,
+    bufferKept: 300,
+    currency: "USD",
+  });
+  assert.ok(text.includes("guided sessions completed: 3"));
+  assert.ok(text.includes("tasks completed: 7"));
+  assert.ok(text.includes("kept 300 USD back under budget"));
+  const none = weeklyFactsText({
+    sessionsDone: 0,
+    tasksCleared: 0,
+    voyagesPlanned: 0,
+    bufferKept: 0,
+    currency: "USD",
+  });
+  assert.ok(!none.includes("kept"));
+});
+
+test("a stored brief is servable only when playable and fresh", () => {
+  const record = {
+    ownerId: "u1",
+    date: "2026-08-18",
+    spoken: "Morning.",
+    summary: "s",
+    createdAt: "2026-08-18T11:20:00.000Z",
+    chapters: [{ kind: "weather" as const, spoken: "Nine and clear." }],
+    card: {
+      date: "2026-08-18",
+      events: [],
+      conflicts: [],
+      dueTasks: [],
+      lists: [],
+    },
+  };
+  const now = new Date("2026-08-18T14:00:00.000Z");
+  assert.equal(isServableBrief(record, now), true);
+  // Playable halves are required…
+  assert.equal(isServableBrief({ ...record, chapters: undefined }, now), false);
+  assert.equal(isServableBrief({ ...record, card: undefined }, now), false);
+  // …and yesterday's record is yesterday's news.
+  assert.equal(
+    isServableBrief(record, new Date("2026-08-19T09:00:00.000Z")),
+    false,
+  );
 });

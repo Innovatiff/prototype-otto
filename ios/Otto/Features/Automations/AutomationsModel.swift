@@ -41,10 +41,46 @@ final class AutomationsModel {
             automations = response.automations
             quietHoursStart = response.quietHoursStart
             quietHoursEnd = response.quietHoursEnd
+            suggestions = (response.suggestions ?? []).filter { !isDismissed($0) }
             errorMessage = nil
         } catch {
             errorMessage = "Couldn't load automations."
         }
+    }
+
+    // MARK: - Open-time suggestions (the engagement log, read positively)
+
+    private(set) var suggestions: [AutomationTimeSuggestion] = []
+
+    func suggestion(for automation: Automation) -> AutomationTimeSuggestion? {
+        suggestions.first { $0.automationId == automation.id }
+    }
+
+    /// One tap moves the fire time to when they actually show up.
+    func applySuggestion(_ suggestion: AutomationTimeSuggestion) async {
+        suggestions.removeAll { $0.automationId == suggestion.automationId }
+        await mutate { client in
+            try await client.updateAutomation(
+                id: suggestion.automationId,
+                enabled: nil,
+                timeOfDay: suggestion.suggestedTime
+            )
+        }
+    }
+
+    /// "Keep it" — remembered per automation+time, so the same suggestion
+    /// never nags twice.
+    func dismissSuggestion(_ suggestion: AutomationTimeSuggestion) {
+        UserDefaults.standard.set(true, forKey: Self.dismissKey(suggestion))
+        suggestions.removeAll { $0.automationId == suggestion.automationId }
+    }
+
+    private func isDismissed(_ suggestion: AutomationTimeSuggestion) -> Bool {
+        UserDefaults.standard.bool(forKey: Self.dismissKey(suggestion))
+    }
+
+    private static func dismissKey(_ suggestion: AutomationTimeSuggestion) -> String {
+        "otto.timesuggestion.dismissed.\(suggestion.automationId).\(suggestion.suggestedTime)"
     }
 
     func setEnabled(_ automation: Automation, enabled: Bool) async {

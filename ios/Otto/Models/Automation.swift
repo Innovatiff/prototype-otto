@@ -166,21 +166,25 @@ struct AutomationListResponse: Codable, Hashable, Sendable {
     var automations: [Automation]
     var quietHoursStart: String
     var quietHoursEnd: String
+    var suggestions: [AutomationTimeSuggestion]?
 
     init(
         automations: [Automation],
         quietHoursStart: String,
-        quietHoursEnd: String
+        quietHoursEnd: String,
+        suggestions: [AutomationTimeSuggestion]? = nil
     ) {
         self.automations = automations
         self.quietHoursStart = quietHoursStart
         self.quietHoursEnd = quietHoursEnd
+        self.suggestions = suggestions
     }
 
     private enum CodingKeys: String, CodingKey {
         case automations
         case quietHoursStart
         case quietHoursEnd
+        case suggestions
     }
 
     init(from decoder: any Decoder) throws {
@@ -188,6 +192,7 @@ struct AutomationListResponse: Codable, Hashable, Sendable {
         self.automations = try container.decode([Automation].self, forKey: .automations)
         self.quietHoursStart = try container.decode(String.self, forKey: .quietHoursStart)
         self.quietHoursEnd = try container.decode(String.self, forKey: .quietHoursEnd)
+        self.suggestions = try container.decodeIfPresent([AutomationTimeSuggestion].self, forKey: .suggestions)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -195,6 +200,7 @@ struct AutomationListResponse: Codable, Hashable, Sendable {
         try container.encode(self.automations, forKey: .automations)
         try container.encode(self.quietHoursStart, forKey: .quietHoursStart)
         try container.encode(self.quietHoursEnd, forKey: .quietHoursEnd)
+        try container.encodeIfPresent(self.suggestions, forKey: .suggestions)
     }
 }
 
@@ -279,6 +285,42 @@ struct AutomationSettingsRequest: Codable, Hashable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(self.quietHoursStart, forKey: .quietHoursStart)
         try container.encodeIfPresent(self.quietHoursEnd, forKey: .quietHoursEnd)
+    }
+}
+
+struct AutomationTimeSuggestion: Codable, Hashable, Sendable {
+    var automationId: String
+    var suggestedTime: String
+    var opensAround: String
+
+    init(
+        automationId: String,
+        suggestedTime: String,
+        opensAround: String
+    ) {
+        self.automationId = automationId
+        self.suggestedTime = suggestedTime
+        self.opensAround = opensAround
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case automationId
+        case suggestedTime
+        case opensAround
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.automationId = try container.decode(String.self, forKey: .automationId)
+        self.suggestedTime = try container.decode(String.self, forKey: .suggestedTime)
+        self.opensAround = try container.decode(String.self, forKey: .opensAround)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.automationId, forKey: .automationId)
+        try container.encode(self.suggestedTime, forKey: .suggestedTime)
+        try container.encode(self.opensAround, forKey: .opensAround)
     }
 }
 

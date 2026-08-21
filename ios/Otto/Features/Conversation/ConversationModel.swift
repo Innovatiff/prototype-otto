@@ -599,8 +599,17 @@ final class ConversationModel {
             pendingDeepLink = deepLink
             return
         }
-        if deepLink == "otto://brief" {
+        switch deepLink {
+        case "otto://brief":
             Task { await runBrief() }
+        case "otto://today":
+            // The evening shutdown push — the close-out tour.
+            Task { await runBrief(mode: .evening) }
+        case "otto://review":
+            // Sunday's weekly review push — the week's mirror.
+            Task { await runBrief(mode: .weekly) }
+        default:
+            break
         }
     }
 
@@ -940,7 +949,9 @@ final class ConversationModel {
 
     /// Routes a captured utterance to whichever confirmation flow is live.
     private func handleCapturedReply(_ text: String) async {
-        if draftStage != .idle {
+        if pendingSessionFeedback != nil {
+            await handleSessionFeedbackReply(text)
+        } else if draftStage != .idle {
             await handleDraftReply(text)
         } else if calendarStage != .idle {
             await handleCalendarReply(text)
@@ -948,6 +959,53 @@ final class ConversationModel {
             await handlePlanScheduleReply(text)
         } else if pendingGuidanceResume != nil {
             await handleGuidanceResumeReply(text)
+        }
+    }
+
+    // MARK: - Post-session taste capture
+
+    /// The session whose feedback is being asked for, nil outside the ask.
+    private var pendingSessionFeedback: String?
+    private static let feedbackAskKey = "otto.feedback.lastAskAt"
+    private static let feedbackGap: TimeInterval = 4 * 3600
+
+    /// After a session completes for real, one spoken question — the reply
+    /// becomes a preference memory the next plan and walkthrough read.
+    /// Throttled so back-to-back sessions don't get interrogated.
+    func maybeAskSessionFeedback() {
+        guard let title = guidance.consumeCompletedTitle() else { return }
+        guard signedIn else { return }
+        let lastAsk = UserDefaults.standard.double(forKey: Self.feedbackAskKey)
+        guard Date().timeIntervalSince1970 - lastAsk > Self.feedbackGap else { return }
+        UserDefaults.standard.set(
+            Date().timeIntervalSince1970, forKey: Self.feedbackAskKey
+        )
+        pendingSessionFeedback = title
+        Task {
+            await self.voiceLoop.announce("Logged. Quick one — how did that feel?")
+            await self.voiceLoop.armUtteranceCapture()
+        }
+    }
+
+    private func handleSessionFeedbackReply(_ text: String) async {
+        guard let title = pendingSessionFeedback else { return }
+        pendingSessionFeedback = nil
+        await voiceLoop.disarmUtteranceCapture()
+        let reply = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = reply.lowercased().trimmingCharacters(in: .punctuationCharacters)
+        guard reply.count >= 3, !["no", "nothing", "skip", "nope"].contains(lowered) else {
+            await voiceLoop.announce("Okay.")
+            return
+        }
+        guard let client = makeClient() else { return }
+        do {
+            try await client.createMemory(
+                category: "preference",
+                content: "Session feedback after \(title): \(reply)"
+            )
+            await voiceLoop.announce("Noted.")
+        } catch {
+            appendNotice("Couldn't save that: \(error.localizedDescription)")
         }
     }
 
@@ -1232,25 +1290,33 @@ final class ConversationModel {
 
     /// Gather the on-device calendar (permission in context), detect
     /// conflicts in Swift, POST /brief, render the card, speak the brief.
-    func runBrief() async {
+    /// Which bookend is on stage — drives the caption and the end state.
+    private(set) var briefTourMode: BriefMode = .morning
+
+    func runBrief(mode: BriefMode = .morning) async {
         guard !briefRunning else { return }
         guard await prepareForTurn() else { return }
         briefRunning = true
         defer { briefRunning = false }
 
+        // Morning reads today; the evening close-out also needs tomorrow;
+        // the weekly review needs no calendar at all.
         let dayStart = Foundation.Calendar.current.startOfDay(for: Date())
+        let daySpan = mode == .evening ? 2 : 1
         let dayEnd =
-            Foundation.Calendar.current.date(byAdding: .day, value: 1, to: dayStart)
-            ?? dayStart.addingTimeInterval(86_400)
+            Foundation.Calendar.current.date(byAdding: .day, value: daySpan, to: dayStart)
+            ?? dayStart.addingTimeInterval(Double(daySpan) * 86_400)
 
         var events: [CalendarEvent] = []
-        do {
-            events = try await calendarService.events(from: dayStart, to: dayEnd)
-        } catch {
-            // Denied or unavailable: the brief still runs without calendar.
-            appendNotice(error.localizedDescription)
+        if mode != .weekly {
+            do {
+                events = try await calendarService.events(from: dayStart, to: dayEnd)
+            } catch {
+                // Denied or unavailable: the brief still runs without calendar.
+                appendNotice(error.localizedDescription)
+            }
         }
-        let conflicts = CalendarService.conflicts(in: events)
+        let conflicts = mode == .morning ? CalendarService.conflicts(in: events) : []
 
         guard let client = makeClient() else { return }
         do {
@@ -1258,11 +1324,13 @@ final class ConversationModel {
                 BriefRequest(
                     events: events,
                     conflicts: conflicts,
-                    timezone: TimeZone.current.identifier
+                    timezone: TimeZone.current.identifier,
+                    mode: mode == .morning ? nil : mode
                 )
             )
+            briefTourMode = mode
             if let chapters = response.chapters, !chapters.isEmpty {
-                await playBriefTour(chapters: chapters, card: response.card)
+                await playBriefTour(chapters: chapters, card: response.card, mode: mode)
             } else {
                 // Older server shape: the full card up for the whole read.
                 withAnimation(.snappy) { briefCard = response.card }
@@ -1277,7 +1345,9 @@ final class ConversationModel {
     /// The synced tour: each chapter's visual slides in, its sentences play,
     /// the next slides over it. A mic tap or typed turn cancels between
     /// chapters; the full-day card is what rests on stage at the end.
-    private func playBriefTour(chapters: [BriefChapter], card: BriefCard) async {
+    private func playBriefTour(
+        chapters: [BriefChapter], card: BriefCard, mode: BriefMode = .morning
+    ) async {
         let token = UUID()
         briefTourToken = token
         briefTourCard = card
@@ -1294,7 +1364,11 @@ final class ConversationModel {
         withAnimation(.spring(duration: 0.5, bounce: 0.12)) {
             briefChapter = nil
             briefTourCard = nil
-            briefCard = card
+            // The weekly review is a moment, not a document — no resting
+            // card. Morning and evening leave the day's card on stage.
+            if mode != .weekly {
+                briefCard = card
+            }
         }
     }
 

@@ -71,8 +71,10 @@ struct ConversationView: View {
         }
         .onChange(of: model.guidance.phase) { _, phase in
             if phase == .idle {
-                // A session just wrapped — the chip should show what's next.
+                // A session just wrapped — the chip should show what's next,
+                // and a completed one earns the one-question taste capture.
                 Task { await model.refreshUpNext() }
+                model.maybeAskSessionFeedback()
             }
         }
         .task {
@@ -370,8 +372,13 @@ struct ConversationView: View {
                 if model.briefTourCard != nil {
                     // Steady through the whole tour — the voice state dips
                     // to idle between chapters and must not flicker this.
-                    Text("Your morning brief")
-                        .foregroundStyle(OttoTheme.textTertiary)
+                    Text(
+                        model.briefTourMode == .evening
+                            ? "Closing out the day"
+                            : model.briefTourMode == .weekly
+                                ? "Your week in review" : "Your morning brief"
+                    )
+                    .foregroundStyle(OttoTheme.textTertiary)
                 } else if let tour = model.experienceTourCard {
                     Text(
                         tour.kind == .trip

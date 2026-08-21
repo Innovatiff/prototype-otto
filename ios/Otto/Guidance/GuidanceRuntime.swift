@@ -61,6 +61,15 @@ final class GuidanceRuntime {
     private var activeScheduledDate: Date?
     private var activeTemplate: Session?
 
+    /// Set when a session finishes for real (not ended early) — the
+    /// post-session feedback ask consumes it exactly once.
+    private(set) var lastCompletedTitle: String?
+
+    func consumeCompletedTitle() -> String? {
+        defer { lastCompletedTitle = nil }
+        return lastCompletedTitle
+    }
+
     init(voiceLoop: VoiceLoop, auth: any AuthProvider) {
         self.voiceLoop = voiceLoop
         self.auth = auth
@@ -264,6 +273,9 @@ final class GuidanceRuntime {
     }
 
     private func teardown(early: Bool) async {
+        if !early {
+            lastCompletedTitle = sessionTitle
+        }
         eventsTask?.cancel()
         eventsTask = nil
         displayTask?.cancel()

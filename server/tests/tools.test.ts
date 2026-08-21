@@ -23,6 +23,7 @@ test("exactly the specified tools, snake_case, unique", () => {
   const names = OTTO_TOOLS.map((t) => t.name);
   assert.deepEqual(names, [
     "show_visual",
+    "set_address_term",
     "create_task",
     "query_tasks",
     "update_task_items",

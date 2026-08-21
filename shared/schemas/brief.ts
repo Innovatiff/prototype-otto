@@ -9,6 +9,15 @@ import { CurrentWeather } from "./weather.js";
  * in Swift. Coordinates are an optional explicit setting — never location
  * services, which are out of scope; the server falls back to a default.
  */
+/**
+ * Which bookend this is. Morning is the classic brief (stored for
+ * continuity and served instantly when pre-generated); evening closes the
+ * day (tomorrow's first thing, what slipped, one line of closure); weekly
+ * is Sunday's mirror (the week's numbers, spoken kindly).
+ */
+export const BriefMode = z.enum(["morning", "evening", "weekly"]);
+export type BriefMode = z.infer<typeof BriefMode>;
+
 export const BriefRequest = z.object({
   events: z.array(CalendarEvent).max(100),
   conflicts: z.array(Conflict).max(50),
@@ -16,6 +25,8 @@ export const BriefRequest = z.object({
   timezone: z.string().min(1),
   lat: z.number().min(-90).max(90).optional(),
   lon: z.number().min(-180).max(180).optional(),
+  /** Absent = "morning". */
+  mode: BriefMode.optional(),
 });
 export type BriefRequest = z.infer<typeof BriefRequest>;
 
@@ -109,5 +120,12 @@ export const BriefRecord = z.object({
   spoken: z.string(),
   summary: z.string(),
   createdAt: isoDateTime,
+  /**
+   * The full playable brief, when the wake-time automation pre-generated
+   * it — POST /brief serves these instantly instead of regenerating, so a
+   * push tap goes straight to voice.
+   */
+  chapters: z.array(BriefChapter).max(8).optional(),
+  card: BriefCard.optional(),
 });
 export type BriefRecord = z.infer<typeof BriefRecord>;

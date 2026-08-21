@@ -139,8 +139,60 @@ private struct AutomationRow: View {
                 )
                 .font(.caption)
             }
+            if let suggestion = model.suggestion(for: automation) {
+                suggestionBanner(suggestion)
+            }
         }
         .padding(.vertical, 2)
+    }
+
+    /// The engagement log speaking up: they open this later than it fires.
+    private func suggestionBanner(_ suggestion: AutomationTimeSuggestion) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(
+                "You usually open this around "
+                    + "\(Self.friendlyTime(suggestion.opensAround)) — move it?"
+            )
+            .font(.caption)
+            .foregroundStyle(OttoTheme.textPrimary)
+            HStack(spacing: 8) {
+                Button {
+                    Haptics.tap()
+                    Task { await model.applySuggestion(suggestion) }
+                } label: {
+                    Text("Move to \(Self.friendlyTime(suggestion.suggestedTime))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .background(OttoTheme.mint, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                Button {
+                    model.dismissSuggestion(suggestion)
+                } label: {
+                    Text("Keep it")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(OttoTheme.textSecondary)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .background(OttoTheme.control, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            OttoTheme.mint.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+    }
+
+    /// "08:15" → "8:15 AM" in the user's clock style.
+    private static func friendlyTime(_ hhmm: String) -> String {
+        AutomationScheduleText.pickerDate(from: hhmm)
+            .formatted(date: .omitted, time: .shortened)
     }
 
     private var title: String { automation.label }

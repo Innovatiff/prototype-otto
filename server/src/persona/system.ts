@@ -312,6 +312,16 @@ export function buildSystemPrompt(
     user.addressTerm !== NO_ADDRESS_TERM && context.addressAllowed
       ? `You may address them as ${user.addressTerm} this turn, within the rules above.`
       : "Do not use any term of address this turn.";
+  // The ask-once nudge: until the user picks their own term, the default
+  // is in effect and Otto may ask — casually, exactly once, then save it
+  // with set_address_term (or "none").
+  const addressAskLine =
+    user.addressTermSet === true
+      ? null
+      : "No confirmed term of address is on file — the current one is the " +
+        "default. At a natural moment (not mid-task), ask once what they'd " +
+        "like to be called and save it with set_address_term; 'none' if " +
+        "they'd rather skip titles. Never ask again after that.";
 
   // The schedule+weather block answers "am I free Thursday afternoon?" and
   // "what's the weather like?" with no tool call. Budgeted: the per-day caps
@@ -334,6 +344,7 @@ export function buildSystemPrompt(
     "",
     "ADDRESS THIS TURN",
     addressLine,
+    ...(addressAskLine !== null ? [addressAskLine] : []),
     "",
     "SCHEDULE (from the device calendar; conflicts are detected on-device)",
     scheduleBlock,

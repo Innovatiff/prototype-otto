@@ -45,3 +45,32 @@ extension APIClient {
         return try decodeBody(DeleteAllResponse.self, from: data).deleted
     }
 }
+
+extension APIClient {
+    /// Device-originated memory (post-session taste capture). The server
+    /// embeds it for retrieval like any other memory.
+    func createMemory(category: String, content: String) async throws {
+        struct Body: Encodable {
+            let category: String
+            let content: String
+            let confidence: Double
+            let sourceTurnId: String
+            let userEdited: Bool
+        }
+        let body: Data
+        do {
+            body = try OttoCoding.encoder.encode(
+                Body(
+                    category: category,
+                    content: content,
+                    confidence: 1,
+                    sourceTurnId: "session-feedback",
+                    userEdited: false
+                )
+            )
+        } catch {
+            throw APIError.decoding(underlying: error)
+        }
+        _ = try await jsonRequest(path: "memory", method: "POST", body: body)
+    }
+}

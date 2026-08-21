@@ -8,6 +8,7 @@ import { test } from "node:test";
 import type { Automation } from "@otto/shared";
 
 import type { DeliveryRecord } from "../src/automations/deliver.js";
+import { openTimeSuggestion } from "../src/automations/deliver.js";
 import {
   DAILY_PUSH_CAP,
   deliveryPriority,
@@ -249,4 +250,59 @@ test("priority: what expires first, then what the user explicitly created", () =
   ].map((type) => deliveryPriority(automation({ type: type as Automation["type"] })));
   assert.deepEqual([...order].sort((a, b) => a - b), order, "declared order is priority order");
   assert.equal(new Set(order).size, order.length);
+});
+
+// ── Open-time suggestions (the engagement log read positively) ──────
+
+test("consistent late opens earn a move suggestion at the median, rounded", () => {
+  // Fires 07:00 New York; opened around 08:10-08:20 every day for a week.
+  const opens = [0, 1, 2, 3, 4, 5].map((day) =>
+    delivery(`o${day}`, {
+      // 12:10Z = 08:10 New York (EDT).
+      openedAt: `2026-08-1${3 + day}T12:1${day}:00.000Z`,
+      createdAt: `2026-08-1${3 + day}T11:00:00.000Z`,
+    }),
+  );
+  const suggestion = openTimeSuggestion(automation(), opens, NOW);
+  assert.ok(suggestion !== null);
+  assert.equal(suggestion.automationId, "a1");
+  // Median open 08:12-08:13 → suggested quarter-hour 08:15.
+  assert.equal(suggestion.suggestedTime, "08:15");
+  assert.match(suggestion.opensAround, /^08:1[0-9]$/);
+});
+
+test("no suggestion without enough opens, small drift, or a fixed schedule", () => {
+  // Four opens: below the floor.
+  const few = [0, 1, 2, 3].map((day) =>
+    delivery(`f${day}`, {
+      openedAt: `2026-08-1${4 + day}T12:10:00.000Z`,
+      createdAt: `2026-08-1${4 + day}T11:00:00.000Z`,
+    }),
+  );
+  assert.equal(openTimeSuggestion(automation(), few, NOW), null);
+
+  // Opens ~10 minutes after the fire: within the tolerance, leave it be.
+  const close = [0, 1, 2, 3, 4, 5].map((day) =>
+    delivery(`c${day}`, {
+      openedAt: `2026-08-1${3 + day}T11:10:00.000Z`,
+      createdAt: `2026-08-1${3 + day}T11:00:00.000Z`,
+    }),
+  );
+  assert.equal(openTimeSuggestion(automation(), close, NOW), null);
+
+  // Event-relative schedules have no fixed time to move.
+  const relative = automation({
+    schedule: { kind: "relative", event: { titleContains: null, minAttendees: 2 }, offsetMinutes: -30 },
+  });
+  assert.equal(openTimeSuggestion(relative, [], NOW), null);
+
+  // Unsent and unopened deliveries never count.
+  const junk = [0, 1, 2, 3, 4, 5].map((day) =>
+    delivery(`j${day}`, {
+      openedAt: day % 2 === 0 ? null : `2026-08-1${3 + day}T12:10:00.000Z`,
+      sendOutcome: day % 2 === 0 ? "sent" : "no_tokens",
+      createdAt: `2026-08-1${3 + day}T11:00:00.000Z`,
+    }),
+  );
+  assert.equal(openTimeSuggestion(automation(), junk, NOW), null);
 });

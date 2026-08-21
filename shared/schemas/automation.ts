@@ -146,11 +146,26 @@ export const Automation = z.object({
 export type Automation = z.infer<typeof Automation>;
 
 /** GET /automations — the management screen's data. */
+/**
+ * "You usually open this around 8:15 — move it?" Computed from the
+ * engagement log when a fixed automation's opens consistently trail its
+ * fire time; the user moves it with one tap or dismisses it.
+ */
+export const AutomationTimeSuggestion = z.object({
+  automationId: zId,
+  /** The proposed new fire time, local "HH:mm". */
+  suggestedTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  /** When they actually open it, local "HH:mm" — the evidence, shown. */
+  opensAround: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+});
+export type AutomationTimeSuggestion = z.infer<typeof AutomationTimeSuggestion>;
+
 export const AutomationListResponse = z.object({
   automations: z.array(Automation).max(100),
   /** Effective quiet hours (defaults applied server-side). */
   quietHoursStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   quietHoursEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  suggestions: z.array(AutomationTimeSuggestion).max(10).optional(),
 });
 export type AutomationListResponse = z.infer<typeof AutomationListResponse>;
 

@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import { getAnthropicClient } from "../llm/anthropic.js";
 import { TIER_MODELS } from "../router/selectModel.js";
-import { wallTime } from "../util/time.js";
+import { wallDate, wallTime } from "../util/time.js";
 import type { BriefContext } from "./gather.js";
 
 export const BRIEF_MODEL = TIER_MODELS.sonnet;
@@ -80,6 +80,40 @@ export const BRIEF_TOOL = {
   },
 };
 
+/** The day's other bookend: short, closing, tomorrow-facing. */
+export const EVENING_SYSTEM_PROMPT = `You are writing Otto's evening close-out. The screen shows each chapter's visual while you speak — emit chapters via emit_brief, in this order:
+
+1. "calendar" — ALWAYS present. Tomorrow's first commitment and anything
+   unusual about the day ("First thing is the 9:00 standup; the afternoon
+   is clear."). Events marked (tomorrow) in the context are tomorrow's.
+   If tomorrow is empty, say so kindly.
+2. "reminders" — ALWAYS present. What's still open from today — PAST DUE
+   items named plainly, with a view ("The pharmacy call slipped — first
+   thing tomorrow?"). Nothing open: one line.
+3. "outro" — ALWAYS present. One line of closure. The day is done; say
+   so like you mean it: "That's the day put away. Goodnight."
+
+RULES
+- Under 80 words TOTAL. This is a close-out, not a second brief.
+- 1-2 spoken sentences per chapter. Plain speech, no lists.
+- No weather, no pep talk, no planning beyond tomorrow's first thing.`;
+
+/** Sunday's mirror: the week's numbers, spoken kindly and honestly. */
+export const WEEKLY_SYSTEM_PROMPT = `You are writing Otto's weekly review. The context carries THE WEEK'S FACTS — counted in code, trust them. Emit chapters via emit_brief:
+
+1. "intro" — ALWAYS present. The week in one honest line.
+2. "plans" — ALWAYS present. Sessions done (and streaks) from the facts.
+   Zero sessions is said plainly, no scolding: "The plan sat this week —
+   it'll be there Monday."
+3. "reminders" — ALWAYS present. Tasks cleared this week; anything
+   planned (voyages) and what stayed under budget.
+4. "outro" — ALWAYS present. Hand the next week over: "That was the
+   week. Monday's yours."
+
+RULES
+- Under 100 words TOTAL. Numbers from the facts, never invented.
+- Kind, specific, zero exclamation marks. A mirror, not a pep rally.`;
+
 const ChaptersPayload = z.object({
   chapters: z.array(BriefChapter).min(1).max(8),
 });
@@ -128,7 +162,11 @@ export function serializeContext(context: BriefContext): string {
       ? "all day"
       : `${wallTime(event.startsAt, tz)}-${wallTime(event.endsAt, tz)}`;
     const where = event.location !== undefined ? ` @ ${event.location}` : "";
-    lines.push(`- ${span} ${event.title}${where}`);
+    // Events past today's wall date are labeled so evening close-outs (and
+    // any 48h view) can never pass tomorrow off as today.
+    const eventDate = wallDate(new Date(event.startsAt), tz);
+    const dayTag = eventDate === context.date ? "" : " (tomorrow)";
+    lines.push(`- ${span} ${event.title}${where}${dayTag}`);
   }
 
   if (context.request.conflicts.length > 0) {
@@ -219,12 +257,16 @@ function usageOf(response: {
 export async function synthesizeBrief(
   context: BriefContext,
   userId: string,
+  options: { system?: string; extraFacts?: string } = {},
 ): Promise<SynthesizedBrief> {
+  const serialized =
+    serializeContext(context) +
+    (options.extraFacts !== undefined ? `\n${options.extraFacts}` : "");
   const response = await getAnthropicClient().messages.create({
     model: BRIEF_MODEL,
     max_tokens: 700,
-    system: BRIEF_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: serializeContext(context) }],
+    system: options.system ?? BRIEF_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: serialized }],
     tools: [BRIEF_TOOL],
     tool_choice: { type: "tool", name: "emit_brief" },
     thinking: { type: "disabled" },

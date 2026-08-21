@@ -11,9 +11,12 @@
  * is capped at 60 words, loses its exclamation marks, and is trimmed at a
  * sentence boundary. A handler cannot ship an overrun by accident.
  */
+import type { Automation } from "@otto/shared";
+
 import { COLLECTIONS, db } from "../firestore.js";
 import { logInfo, logWarning } from "../log.js";
 import { sendAutomationPush } from "./push.js";
+import { localClock } from "./suppress.js";
 
 export const BODY_WORD_CAP = 60;
 
@@ -126,6 +129,62 @@ function deliveriesCollection() {
  * gate's raw material (daily counts, per-automation streaks). Equality-
  * only query; sorted and capped in memory.
  */
+const SUGGESTION_WINDOW_MS = 14 * 24 * 3600 * 1000;
+const SUGGESTION_MIN_OPENS = 5;
+const SUGGESTION_MIN_DRIFT_MIN = 45;
+const SUGGESTION_MAX_DRIFT_MIN = 360;
+
+function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
+function minutesToHHmm(total: number): string {
+  const clamped = ((total % 1440) + 1440) % 1440;
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * The engagement log, read positively: when a fixed automation's pushes
+ * are consistently opened well after they fire, suggest moving the fire
+ * time to when the user actually shows up. Needs ≥5 opens in 14 days,
+ * a median drift of 45min–6h (beyond that they open whenever), and the
+ * suggestion is the median rounded to the nearest quarter hour.
+ */
+export function openTimeSuggestion(
+  automation: Automation,
+  deliveries: readonly DeliveryRecord[],
+  now: Date,
+): { automationId: string; suggestedTime: string; opensAround: string } | null {
+  if (automation.schedule.kind !== "fixed") {
+    return null;
+  }
+  const since = now.getTime() - SUGGESTION_WINDOW_MS;
+  const opens: number[] = [];
+  for (const delivery of deliveries) {
+    if (delivery.automationId !== automation.id) continue;
+    if (delivery.sendOutcome !== "sent" || delivery.openedAt === null) continue;
+    if (new Date(delivery.createdAt).getTime() < since) continue;
+    opens.push(hhmmToMinutes(localClock(new Date(delivery.openedAt), automation.timezone)));
+  }
+  if (opens.length < SUGGESTION_MIN_OPENS) {
+    return null;
+  }
+  opens.sort((a, b) => a - b);
+  const median = opens[Math.floor(opens.length / 2)] ?? 0;
+  const drift = median - hhmmToMinutes(automation.schedule.timeOfDay);
+  if (drift < SUGGESTION_MIN_DRIFT_MIN || drift > SUGGESTION_MAX_DRIFT_MIN) {
+    return null;
+  }
+  return {
+    automationId: automation.id,
+    suggestedTime: minutesToHHmm(Math.round(median / 15) * 15),
+    opensAround: minutesToHHmm(median),
+  };
+}
+
 export async function loadOwnerDeliveries(uid: string, limit = 60): Promise<DeliveryRecord[]> {
   const snapshot = await deliveriesCollection().where("ownerId", "==", uid).limit(300).get();
   const records: DeliveryRecord[] = [];
