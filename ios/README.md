@@ -1,8 +1,15 @@
 # Otto iOS — Phase 0 runbook
 
 Everything below happens on your Mac. The Firebase project is
-`prototype-otto`; the app's bundle id is `com.yourname.otto` (matching the
-iOS app registered in the Firebase console).
+`prototype-otto`; the app's bundle id is `com.alamfernandez.otto` (matching
+the iOS app registered in the Firebase console), with
+`com.alamfernandez.otto.widgets` and `.share` for the two extensions.
+
+Scope: this covers the Phase 0 loop — sign in, talk, watch the stream. It
+does NOT cover what later phases added: push (APNs key upload), HealthKit,
+widgets, the share extension, Sign in with Apple, or subscriptions
+(App Store Connect products, RevenueCat, the webhook). Where this file and
+`project.yml` disagree, `project.yml` is right.
 
 ## 0. One-time: Firebase console
 
@@ -56,10 +63,16 @@ xcodegen generate
 open Otto.xcodeproj
 ```
 
-In Xcode: let Swift Package resolution finish (Firebase SDK), pick an iOS 26
-iPhone simulator, and Run. No signing team is needed for the simulator; once
-the Apple Developer Program membership lands, set `DEVELOPMENT_TEAM` in
-`project.yml` and regenerate.
+In Xcode: let Swift Package resolution finish (Firebase and RevenueCat), pick
+an iOS 26 iPhone simulator, and Run.
+
+`DEVELOPMENT_TEAM` is already set to `TSZLLRZJXH` on all four targets, with
+automatic signing. If you are not on that team, replace every occurrence in
+`project.yml` with your own Team ID (developer.apple.com/account → Membership
+details) and re-run `xcodegen generate`. A paid Apple Developer Program
+membership is required to sign the push and HealthKit entitlements — a free
+personal team cannot — and the matching Apple ID must be signed into
+Xcode → Settings → Accounts.
 
 ## 5. Acceptance walkthrough
 
