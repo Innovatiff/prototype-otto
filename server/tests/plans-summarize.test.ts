@@ -85,6 +85,7 @@ test("invalid generate_plan input fails as is_error without emitting events", as
     turnId: "t1",
     now: new Date("2026-03-05T12:00:00Z"),
     timezone: "America/New_York",
+    entitled: { tier: "free", meterUid: "u1", anchorAt: null, hasConsent: true },
     emit: (event) => emitted.push(event),
   };
   const outcome = await executeToolUse("generate_plan", { domain: "cooking" }, ctx);

@@ -15,7 +15,11 @@ import { AppError } from "../errors.js";
 import { errorFields, logInfo, logWarning } from "../log.js";
 
 /** Every secret this service may read. */
-export const KNOWN_SECRETS = ["ANTHROPIC_API_KEY", "VOYAGE_API_KEY"] as const;
+export const KNOWN_SECRETS = [
+  "ANTHROPIC_API_KEY",
+  "VOYAGE_API_KEY",
+  "REVENUECAT_WEBHOOK_SECRET",
+] as const;
 export type SecretName = (typeof KNOWN_SECRETS)[number];
 
 const cache = new Map<SecretName, string>();
@@ -83,4 +87,13 @@ export function getSecret(name: SecretName): string {
     throw new AppError(500, "internal", `Secret ${name} is not configured.`);
   }
   return value;
+}
+
+/**
+ * A previously loaded secret, or undefined when it was never configured — for
+ * callers that turn absence into their own answer (the RevenueCat webhook
+ * refuses with a 503 rather than a 500).
+ */
+export function tryGetSecret(name: SecretName): string | undefined {
+  return cache.get(name);
 }

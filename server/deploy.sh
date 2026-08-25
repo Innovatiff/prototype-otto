@@ -20,6 +20,18 @@ fi
 GIT_SHA="$(git rev-parse --short HEAD)"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${SERVICE}:${GIT_SHA}"
 
+# One-time (idempotent, and cheap once they're on): every API this script and
+# the running service touch. Without these the first deploy fails deep inside
+# a gcloud call with an "API not enabled" link instead of a usable message.
+echo "Ensuring required APIs are enabled..."
+gcloud services enable \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  cloudscheduler.googleapis.com \
+  secretmanager.googleapis.com \
+  --project="${PROJECT_ID}" --quiet
+
 # One-time: the Artifact Registry repository.
 if ! gcloud artifacts repositories describe "${REPOSITORY}" \
     --location="${REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
@@ -38,14 +50,52 @@ gcloud builds submit \
 # Auth happens at the app layer (Firebase ID tokens verified on every request),
 # so the Cloud Run service itself allows unauthenticated invocations.
 echo "Deploying ${SERVICE} to Cloud Run (${REGION})..."
+# --update-env-vars, never --set-env-vars: --set REPLACES the whole environment,
+# which would wipe SCHEDULER_INVOKER/SCHEDULER_AUDIENCE (and anything set by
+# hand) on every redeploy and leave the tick route failing closed until the
+# update below landed.
 gcloud run deploy "${SERVICE}" \
   --project="${PROJECT_ID}" \
   --image="${IMAGE}" \
   --region="${REGION}" \
   --allow-unauthenticated \
-  --set-env-vars=NODE_ENV=production
+  --update-env-vars=NODE_ENV=production
 
 SERVICE_URL="$(gcloud run services describe "${SERVICE}" --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')"
+
+# ── Secrets ──────────────────────────────────────────────────────────
+# The service reads secrets from Secret Manager at cold start (see
+# src/secrets/index.ts), under the identity Cloud Run runs it as. Grant that
+# identity read access to the secrets that exist, and name the ones that
+# don't — an absent ANTHROPIC_API_KEY means every model call 500s, and an
+# absent REVENUECAT_WEBHOOK_SECRET means the webhook refuses every event.
+RUNTIME_SA="$(gcloud run services describe "${SERVICE}" --project="${PROJECT_ID}" --region="${REGION}" --format='value(spec.template.spec.serviceAccountName)')"
+if [[ -z "${RUNTIME_SA}" ]]; then
+  PROJECT_NUMBER="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
+  RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+fi
+
+MISSING_SECRETS=()
+for SECRET_NAME in ANTHROPIC_API_KEY REVENUECAT_WEBHOOK_SECRET VOYAGE_API_KEY; do
+  if gcloud secrets describe "${SECRET_NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    gcloud secrets add-iam-policy-binding "${SECRET_NAME}" \
+      --project="${PROJECT_ID}" \
+      --member="serviceAccount:${RUNTIME_SA}" \
+      --role="roles/secretmanager.secretAccessor" \
+      --quiet >/dev/null
+  else
+    MISSING_SECRETS+=("${SECRET_NAME}")
+  fi
+done
+if (( ${#MISSING_SECRETS[@]} > 0 )); then
+  echo
+  echo "NOT CONFIGURED: ${MISSING_SECRETS[*]}"
+  echo "Create each one, then re-run this script so it can grant access:"
+  for SECRET_NAME in "${MISSING_SECRETS[@]}"; do
+    echo "  printf %s 'THE_VALUE' | gcloud secrets create ${SECRET_NAME} --project=${PROJECT_ID} --data-file=-"
+  done
+  echo
+fi
 
 # ── Automations scheduler ────────────────────────────────────────────
 # Cloud Scheduler fires POST /automations/tick every 5 minutes with an OIDC

@@ -292,7 +292,7 @@ test("no suggestion without enough opens, small drift, or a fixed schedule", () 
 
   // Event-relative schedules have no fixed time to move.
   const relative = automation({
-    schedule: { kind: "relative", event: { titleContains: null, minAttendees: 2 }, offsetMinutes: -30 },
+    schedule: { kind: "relative_to_event", minutesBefore: 30, eventFilter: { minAttendees: 2 } },
   });
   assert.equal(openTimeSuggestion(relative, [], NOW), null);
 

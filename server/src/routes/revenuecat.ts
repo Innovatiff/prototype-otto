@@ -10,6 +10,7 @@ import { z } from "zod";
 import { AppError } from "../errors.js";
 import { COLLECTIONS, db } from "../firestore.js";
 import { logInfo, logWarning } from "../log.js";
+import { tryGetSecret } from "../secrets/index.js";
 
 const WebhookBody = z.object({
   event: z.object({
@@ -82,7 +83,9 @@ export function mapWebhookEvent(body: z.infer<typeof WebhookBody>): WebhookOutco
 export const revenuecatRouter = Router();
 
 revenuecatRouter.post("/webhook", async (req: Request, res: Response): Promise<void> => {
-  const secret = process.env["REVENUECAT_WEBHOOK_SECRET"];
+  // Production reads Secret Manager (loaded at cold start); development falls
+  // back to process.env inside loadSecrets, so a local run needs no GCP access.
+  const secret = tryGetSecret("REVENUECAT_WEBHOOK_SECRET");
   if (secret === undefined || secret.length === 0) {
     // Fail closed: an unconfigured webhook must not accept writes.
     throw new AppError(503, "internal", "Webhook not configured.");
